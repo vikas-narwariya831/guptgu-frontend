@@ -1,6 +1,7 @@
 node_modules/
 dist/
 build/
+.netlify/
 *.tsbuildinfo
 .env
 .env.local

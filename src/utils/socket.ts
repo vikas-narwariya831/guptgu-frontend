@@ -8,7 +8,7 @@ const isLocal =
 
 export const SIGNALING_URL = isLocal
   ? 'http://localhost:5001'
-  : (import.meta.env.VITE_SIGNALING_URL || 'http://localhost:5001');
+  : (import.meta.env.VITE_SIGNALING_URL || 'https://guptgu-backend.onrender.com');
 
 export const socket: Socket = io(SIGNALING_URL, {
   transports: ['websocket', 'polling'],
