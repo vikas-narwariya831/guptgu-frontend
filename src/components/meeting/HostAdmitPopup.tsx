@@ -16,7 +16,7 @@ export default function HostAdmitPopup({
   if (!firstGuest) return null;
 
   return (
-    <div className="fixed top-18 right-5 z-40 w-80 p-4 rounded-2xl bg-white border border-[#CBE7D8] shadow-[0_16px_40px_-8px_rgba(17,24,39,0.16)] space-y-3">
+    <div className="fixed top-16 left-3 right-3 sm:left-auto sm:right-5 z-40 sm:w-80 p-4 rounded-2xl bg-white border border-[#CBE7D8] shadow-[0_16px_40px_-8px_rgba(17,24,39,0.16)] space-y-3">
       <div>
         <p className="text-xs font-bold text-[#0D6E4E]">Someone wants to join</p>
         <p className="text-sm font-semibold text-[#111827] mt-0.5 truncate">{firstGuest.name}</p>

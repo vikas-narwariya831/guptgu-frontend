@@ -26,17 +26,17 @@ export default function VideoStage({
 
   const gridColsClass =
     peers.length === 1
-      ? 'grid-cols-1 max-w-4xl max-h-[600px] my-auto mx-auto'
+      ? 'grid-cols-1 max-w-4xl md:max-h-[600px] my-auto mx-auto'
       : peers.length === 2
-      ? 'grid-cols-1 md:grid-cols-2 max-w-6xl max-h-[540px] my-auto mx-auto'
+      ? 'grid-cols-1 md:grid-cols-2 max-w-6xl md:max-h-[540px] my-auto mx-auto'
       : peers.length <= 4
       ? 'grid-cols-1 sm:grid-cols-2 max-w-6xl mx-auto'
       : 'grid-cols-2 lg:grid-cols-3';
 
   if (spotlightPeer) {
     return (
-      <div className="flex-1 flex flex-col lg:flex-row gap-3.5 min-h-0">
-        <div className="flex-1 min-h-0">
+      <div className="flex-1 flex flex-col lg:flex-row gap-2.5 sm:gap-3.5 min-h-0">
+        <div className="flex-1 min-h-[240px]">
           <VideoTile
             name={spotlightPeer.name}
             stream={spotlightPeer.stream || null}
@@ -52,9 +52,9 @@ export default function VideoStage({
         </div>
 
         {stripPeers.length > 0 && (
-          <div className="lg:w-64 xl:w-72 shrink-0 flex lg:flex-col gap-3 overflow-x-auto lg:overflow-y-auto">
+          <div className="lg:w-64 xl:w-72 shrink-0 flex lg:flex-col gap-2.5 overflow-x-auto lg:overflow-y-auto pb-1 lg:pb-0">
             {stripPeers.map((peer) => (
-              <div key={peer.id} className="w-48 lg:w-full h-36 lg:h-44 shrink-0">
+              <div key={peer.id} className="w-36 sm:w-48 lg:w-full h-28 sm:h-36 lg:h-44 shrink-0">
                 <VideoTile
                   name={peer.name}
                   stream={peer.stream || null}
@@ -96,18 +96,18 @@ export default function VideoStage({
       </div>
 
       {peers.length === 1 && (
-        <div className="hidden sm:flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-white/95 backdrop-blur-md border border-[#E4E7E4] shadow-[0_8px_24px_-4px_rgba(17,24,39,0.1)] absolute bottom-3 right-3 z-10">
+        <div className="flex items-center gap-2.5 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 rounded-2xl bg-white/95 border border-[#E4E7E4] shadow-[0_8px_24px_-4px_rgba(17,24,39,0.1)] absolute bottom-2 right-2 left-2 sm:left-auto sm:bottom-3 sm:right-3 z-10">
           <div className="w-8 h-8 rounded-xl bg-[#EDF7F2] border border-[#CBE7D8] flex items-center justify-center text-[#0D6E4E] shrink-0">
             <UserPlus size={15} />
           </div>
-          <div className="text-left">
-            <p className="text-xs font-bold text-[#111827]">You&apos;re the only one here</p>
-            <p className="text-[11px] text-[#6B7280]">Share Guptgu link to invite others</p>
+          <div className="text-left flex-1 min-w-0">
+            <p className="text-xs font-bold text-[#111827] truncate">You&apos;re the only one here</p>
+            <p className="text-[11px] text-[#6B7280] truncate">Share Guptgu link to invite others</p>
           </div>
           <button
             type="button"
             onClick={onCopyInvite}
-            className="ml-2 px-3 py-1.5 rounded-xl bg-[#0D6E4E] hover:bg-[#0A573D] text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="ml-1 sm:ml-2 px-3 py-1.5 rounded-xl bg-[#0D6E4E] hover:bg-[#0A573D] text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
           >
             {copied ? <Check size={12} /> : <Copy size={12} />}
             <span>{copied ? 'Copied' : 'Copy'}</span>

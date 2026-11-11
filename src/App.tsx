@@ -115,7 +115,7 @@ export default function App() {
   const allPeers = [selfPeer, ...webrtc.remotePeers];
 
   return (
-    <div className="h-screen w-screen bg-[#FAFBF9] text-[#111827] flex flex-col overflow-hidden relative select-none">
+    <div className="h-dvh w-full bg-[#FAFBF9] text-[#111827] flex flex-col overflow-hidden relative select-none">
       <MeetingHeader
         roomId={webrtc.roomId}
         copied={copied}
@@ -130,7 +130,7 @@ export default function App() {
       />
 
       <div className="flex-1 flex min-h-0 overflow-hidden">
-        <main className="flex-1 p-3 sm:p-4 flex flex-col min-w-0 min-h-0 overflow-hidden relative">
+        <main className="flex-1 p-2.5 sm:p-4 flex flex-col min-w-0 min-h-0 overflow-y-auto md:overflow-hidden relative">
           <VideoStage
             peers={allPeers}
             selfId={webrtc.selfId}

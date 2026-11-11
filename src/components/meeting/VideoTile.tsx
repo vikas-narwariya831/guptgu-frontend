@@ -64,7 +64,7 @@ function VideoTile({
           : isHandRaised
           ? 'border-amber-400 ring-4 ring-amber-400/15 shadow-md'
           : 'border-[#E4E7E4] hover:border-[#CBE7D8] shadow-[0_1px_3px_rgba(16,24,40,0.04)]'
-      } flex items-center justify-center w-full h-full min-h-[200px]`}
+      } flex items-center justify-center w-full h-full min-h-[165px] sm:min-h-[210px]`}
     >
       <video
         ref={videoRef}
@@ -119,7 +119,7 @@ function VideoTile({
           <button
             type="button"
             onClick={onTogglePin}
-            className="pointer-events-auto opacity-0 group-hover:opacity-100 focus:opacity-100 p-2 rounded-full bg-white/95 hover:bg-white text-[#374151] border border-[#E4E7E4] shadow-md transition-all cursor-pointer"
+            className="pointer-events-auto opacity-85 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 p-2 rounded-full bg-white/95 hover:bg-white text-[#374151] border border-[#E4E7E4] shadow-md transition-all cursor-pointer"
             title={isPinned ? 'Unpin tile' : 'Pin to spotlight'}
           >
             {isPinned ? <PinOff size={14} /> : <Pin size={14} />}

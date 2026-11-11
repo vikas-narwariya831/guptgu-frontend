@@ -58,8 +58,8 @@ function MeetingHeader({
       : webSpeed.effectiveType;
 
   return (
-    <header className="h-15 px-4 sm:px-6 border-b border-[#E6E9E6] bg-white md:bg-white/95 md:backdrop-blur-md flex items-center justify-between shrink-0 z-20">
-      <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+    <header className="h-14 px-3 sm:px-6 border-b border-[#E6E9E6] bg-white md:bg-white/95 md:backdrop-blur-md flex items-center justify-between gap-2 shrink-0 z-20">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
         <div className="w-8 h-8 rounded-xl bg-[#0D6E4E] flex items-center justify-center text-white shrink-0 shadow-sm shadow-[#0D6E4E]/20">
           <Video size={16} />
         </div>
@@ -72,7 +72,7 @@ function MeetingHeader({
         <button
           type="button"
           onClick={onCopyInvite}
-          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-xs font-mono font-semibold transition-all cursor-pointer truncate ${
+          className={`inline-flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl border text-[11px] sm:text-xs font-mono font-semibold transition-all cursor-pointer max-w-[140px] sm:max-w-none truncate ${
             copied
               ? 'bg-[#EDF7F2] border-[#CBE7D8] text-[#0D6E4E]'
               : 'bg-[#FAFBF9] hover:bg-[#EDF7F2]/60 border-[#E4E7E4] hover:border-[#CBE7D8] text-[#374151]'

@@ -93,11 +93,14 @@ function ControlBar({
 
   const micLockedByHost = !isHost && isMuted && !roomSettings.allowUnmute;
   const screenLockedByHost = !isHost && !isScreenSharing && !roomSettings.allowScreenShare;
+  const canScreenShare =
+    typeof navigator !== 'undefined' &&
+    Boolean(navigator.mediaDevices && typeof navigator.mediaDevices.getDisplayMedia === 'function');
 
   return (
-    <div className="relative flex items-center justify-center px-3 pb-4 pt-1 z-30">
+    <div className="relative flex items-center justify-center px-2 sm:px-3 pb-3 sm:pb-4 pt-1 z-30">
       {showEmojiPicker && (
-        <div className="absolute bottom-22 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-white border border-[#E4E7E4] shadow-[0_16px_40px_-8px_rgba(17,24,39,0.16)]">
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-2 rounded-2xl bg-white border border-[#E4E7E4] shadow-[0_16px_40px_-8px_rgba(17,24,39,0.16)] max-w-[calc(100vw-24px)]">
           {REACTION_EMOJIS.map((emoji) => (
             <button
               key={emoji}
@@ -115,7 +118,7 @@ function ControlBar({
       )}
 
       {showQualityMenu && (
-        <div className="absolute bottom-22 left-1/2 -translate-x-1/2 w-80 p-3.5 rounded-2xl bg-white border border-[#E4E7E4] shadow-[0_16px_40px_-8px_rgba(17,24,39,0.18)] space-y-2.5">
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 w-[calc(100vw-24px)] sm:w-80 max-w-sm p-3.5 rounded-2xl bg-white border border-[#E4E7E4] shadow-[0_16px_40px_-8px_rgba(17,24,39,0.18)] space-y-2.5">
           <div className="flex items-center justify-between px-1">
             <span className="text-xs font-bold text-[#111827]">Network &amp; Quality</span>
             <span className="text-[11px] font-mono font-semibold text-[#0D6E4E] bg-[#EDF7F2] border border-[#CBE7D8] px-2 py-0.5 rounded-full">
@@ -178,17 +181,17 @@ function ControlBar({
         </div>
       )}
 
-      <div className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-2xl bg-white/98 md:bg-white/95 md:backdrop-blur-xl border border-[#E4E7E4] shadow-[0_1px_3px_rgba(16,24,40,0.04),0_20px_45px_-14px_rgba(16,24,40,0.14)] flex-wrap justify-center">
+      <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 rounded-2xl bg-white/98 md:bg-white/95 md:backdrop-blur-xl border border-[#E4E7E4] shadow-[0_1px_3px_rgba(16,24,40,0.04),0_20px_45px_-14px_rgba(16,24,40,0.14)] flex-wrap justify-center max-w-full">
         {/* Mic */}
         <button
           type="button"
           onClick={onToggleMute}
-          className={`relative h-11 w-11 rounded-xl flex items-center justify-center transition-all ${
+          className={`relative h-10 w-10 sm:h-11 sm:w-11 rounded-xl flex items-center justify-center transition-all ${
             micLockedByHost
               ? 'bg-rose-50 text-rose-400 border border-rose-200 cursor-not-allowed'
               : isMuted
               ? 'bg-rose-600 text-white hover:bg-rose-700 cursor-pointer shadow-sm'
-              : 'bg-[#F3F5F3] text-[#1F2937] hover:bg-[#EDF7F2] hover:text-[#0D6E4E] cursor-pointer hover:-translate-y-0.5'
+              : 'bg-[#F3F5F3] text-[#1F2937] hover:bg-[#EDF7F2] hover:text-[#0D6E4E] cursor-pointer md:hover:-translate-y-0.5'
           }`}
           title={
             micLockedByHost ? 'Host disabled unmuting' : isMuted ? 'Unmute (M)' : 'Mute (M)'
@@ -201,38 +204,40 @@ function ControlBar({
         <button
           type="button"
           onClick={onToggleCamera}
-          className={`h-11 w-11 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+          className={`h-10 w-10 sm:h-11 sm:w-11 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
             isCameraOff
               ? 'bg-rose-600 text-white hover:bg-rose-700 shadow-sm'
-              : 'bg-[#F3F5F3] text-[#1F2937] hover:bg-[#EDF7F2] hover:text-[#0D6E4E] hover:-translate-y-0.5'
+              : 'bg-[#F3F5F3] text-[#1F2937] hover:bg-[#EDF7F2] hover:text-[#0D6E4E] md:hover:-translate-y-0.5'
           }`}
           title={isCameraOff ? 'Turn Camera On (V)' : 'Turn Camera Off (V)'}
         >
           {isCameraOff ? <VideoOff size={18} /> : <Video size={18} />}
         </button>
 
-        {/* Screen Share */}
-        <button
-          type="button"
-          onClick={onToggleScreenShare}
-          className={`h-11 px-3.5 rounded-xl flex items-center gap-2 text-xs font-bold transition-all ${
-            screenLockedByHost
-              ? 'bg-[#F3F5F3] text-[#9CA3AF] cursor-not-allowed'
-              : isScreenSharing
-              ? 'bg-[#0D6E4E] text-white hover:bg-[#0A573D] shadow-md shadow-[#0D6E4E]/20 cursor-pointer'
-              : 'bg-[#F3F5F3] text-[#1F2937] hover:bg-[#EDF7F2] hover:text-[#0D6E4E] cursor-pointer hover:-translate-y-0.5'
-          }`}
-          title={
-            screenLockedByHost
-              ? 'Host disabled screen sharing'
-              : isScreenSharing
-              ? 'Stop Sharing Screen'
-              : 'Share Screen'
-          }
-        >
-          {isScreenSharing ? <MonitorOff size={18} /> : <MonitorUp size={18} />}
-          <span className="hidden sm:inline">{isScreenSharing ? 'Stop Share' : 'Present'}</span>
-        </button>
+        {/* Screen Share (only shown where browser supports getDisplayMedia) */}
+        {canScreenShare && (
+          <button
+            type="button"
+            onClick={onToggleScreenShare}
+            className={`h-10 sm:h-11 px-2.5 sm:px-3.5 rounded-xl flex items-center gap-2 text-xs font-bold transition-all ${
+              screenLockedByHost
+                ? 'bg-[#F3F5F3] text-[#9CA3AF] cursor-not-allowed'
+                : isScreenSharing
+                ? 'bg-[#0D6E4E] text-white hover:bg-[#0A573D] shadow-md shadow-[#0D6E4E]/20 cursor-pointer'
+                : 'bg-[#F3F5F3] text-[#1F2937] hover:bg-[#EDF7F2] hover:text-[#0D6E4E] cursor-pointer md:hover:-translate-y-0.5'
+            }`}
+            title={
+              screenLockedByHost
+                ? 'Host disabled screen sharing'
+                : isScreenSharing
+                ? 'Stop Sharing Screen'
+                : 'Share Screen'
+            }
+          >
+            {isScreenSharing ? <MonitorOff size={18} /> : <MonitorUp size={18} />}
+            <span className="hidden sm:inline">{isScreenSharing ? 'Stop Share' : 'Present'}</span>
+          </button>
+        )}
 
         {/* Network / Data Saver */}
         <button
@@ -241,7 +246,7 @@ function ControlBar({
             setShowEmojiPicker(false);
             setShowQualityMenu((p) => !p);
           }}
-          className={`h-11 px-3 rounded-xl flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer ${
+          className={`h-10 sm:h-11 px-2.5 sm:px-3 rounded-xl flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer ${
             showQualityMenu || videoQualityMode === 'data-saver' || videoQualityMode === 'audio-only'
               ? 'bg-[#EDF7F2] text-[#0D6E4E] border border-[#CBE7D8]'
               : 'bg-[#F3F5F3] text-[#1F2937] hover:bg-[#EDF7F2] hover:text-[#0D6E4E]'
@@ -266,10 +271,10 @@ function ControlBar({
         <button
           type="button"
           onClick={onToggleHandRaise}
-          className={`h-11 w-11 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+          className={`h-10 w-10 sm:h-11 sm:w-11 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
             isHandRaised
               ? 'bg-amber-400 text-[#111827] hover:bg-amber-300 shadow-sm'
-              : 'bg-[#F3F5F3] text-[#1F2937] hover:bg-[#EDF7F2] hover:text-[#0D6E4E] hover:-translate-y-0.5'
+              : 'bg-[#F3F5F3] text-[#1F2937] hover:bg-[#EDF7F2] hover:text-[#0D6E4E] md:hover:-translate-y-0.5'
           }`}
           title="Raise Hand"
         >
@@ -283,10 +288,10 @@ function ControlBar({
             setShowQualityMenu(false);
             setShowEmojiPicker((p) => !p);
           }}
-          className={`h-11 w-11 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+          className={`h-10 w-10 sm:h-11 sm:w-11 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
             showEmojiPicker
               ? 'bg-[#EDF7F2] text-[#0D6E4E] border border-[#CBE7D8]'
-              : 'bg-[#F3F5F3] text-[#1F2937] hover:bg-[#EDF7F2] hover:text-[#0D6E4E] hover:-translate-y-0.5'
+              : 'bg-[#F3F5F3] text-[#1F2937] hover:bg-[#EDF7F2] hover:text-[#0D6E4E] md:hover:-translate-y-0.5'
           }`}
           title="Send Reaction"
         >
@@ -297,7 +302,7 @@ function ControlBar({
         <button
           type="button"
           onClick={onCopyLink}
-          className="h-11 w-11 rounded-xl bg-[#F3F5F3] hover:bg-[#EDF7F2] text-[#1F2937] hover:text-[#0D6E4E] flex items-center justify-center transition-all cursor-pointer hover:-translate-y-0.5"
+          className="hidden sm:flex h-11 w-11 rounded-xl bg-[#F3F5F3] hover:bg-[#EDF7F2] text-[#1F2937] hover:text-[#0D6E4E] items-center justify-center transition-all cursor-pointer md:hover:-translate-y-0.5"
           title="Copy Meeting Invite Link"
         >
           {copied ? <Check size={18} className="text-[#0D6E4E]" /> : <Link2 size={18} />}
@@ -309,7 +314,7 @@ function ControlBar({
         <button
           type="button"
           onClick={() => onToggleSidebar('participants')}
-          className={`relative h-11 px-3 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
+          className={`relative h-10 sm:h-11 px-2.5 sm:px-3 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 ${
             activeSidebar === 'participants'
               ? 'bg-[#0D6E4E] text-white shadow-sm'
               : 'bg-[#F3F5F3] text-[#1F2937] hover:bg-[#EDF7F2] hover:text-[#0D6E4E]'
@@ -329,7 +334,7 @@ function ControlBar({
         <button
           type="button"
           onClick={() => onToggleSidebar('chat')}
-          className={`relative h-11 w-11 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+          className={`relative h-10 w-10 sm:h-11 sm:w-11 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
             activeSidebar === 'chat'
               ? 'bg-[#0D6E4E] text-white shadow-sm'
               : 'bg-[#F3F5F3] text-[#1F2937] hover:bg-[#EDF7F2] hover:text-[#0D6E4E]'
@@ -349,7 +354,7 @@ function ControlBar({
           <button
             type="button"
             onClick={() => onToggleSidebar('host')}
-            className={`relative h-11 w-11 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
+            className={`relative h-10 w-10 sm:h-11 sm:w-11 rounded-xl flex items-center justify-center transition-all cursor-pointer ${
               activeSidebar === 'host'
                 ? 'bg-[#0D6E4E] text-white shadow-sm'
                 : 'bg-[#EDF7F2] text-[#0D6E4E] border border-[#CBE7D8] hover:bg-[#DCEFE5]'
@@ -364,7 +369,7 @@ function ControlBar({
         <button
           type="button"
           onClick={onLeave}
-          className="h-11 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-rose-600/20 ml-1"
+          className="h-10 sm:h-11 px-3 sm:px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md shadow-rose-600/20 ml-0.5 sm:ml-1"
           title={isHost ? 'Leave or End Meeting' : 'Leave Meeting'}
         >
           <PhoneOff size={17} />

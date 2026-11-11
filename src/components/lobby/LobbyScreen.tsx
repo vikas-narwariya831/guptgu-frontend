@@ -170,7 +170,7 @@ export default function LobbyScreen({
               type="button"
               onClick={webSpeed.refresh}
               title="Click to refresh internet speed"
-              className={`hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
+              className={`inline-flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-semibold px-2.5 sm:px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
                 webSpeed.label === 'Slow'
                   ? 'bg-rose-50 text-rose-700 border-rose-200'
                   : webSpeed.label === 'Moderate'
@@ -203,11 +203,11 @@ export default function LobbyScreen({
       </header>
 
       {/* Main Content */}
-      <main className="relative z-10 max-w-6xl w-full mx-auto px-4 sm:px-8 py-8 lg:py-12 grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-center">
+      <main className="relative z-10 max-w-6xl w-full mx-auto px-3.5 sm:px-8 py-4 sm:py-8 lg:py-12 grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 lg:gap-12 items-center">
         {/* Left: Framed Studio Preview */}
-        <div className="lg:col-span-7 flex flex-col gap-3.5">
-          <div className="p-2.5 bg-white rounded-[26px] border border-[#E4E7E4] shadow-[0_1px_3px_rgba(16,24,40,0.04),0_20px_40px_-12px_rgba(16,24,40,0.08)]">
-            <div className="relative aspect-video w-full rounded-[18px] overflow-hidden bg-[#111614] flex items-center justify-center">
+        <div className="lg:col-span-7 flex flex-col gap-3 min-w-0">
+          <div className="p-1.5 sm:p-2.5 bg-white rounded-2xl sm:rounded-[26px] border border-[#E4E7E4] shadow-[0_1px_3px_rgba(16,24,40,0.04),0_20px_40px_-12px_rgba(16,24,40,0.08)]">
+            <div className="relative aspect-[16/10] sm:aspect-video w-full rounded-xl sm:rounded-[18px] overflow-hidden bg-[#111614] flex items-center justify-center">
               <video
                 ref={videoRef}
                 autoPlay
@@ -329,18 +329,18 @@ export default function LobbyScreen({
         </div>
 
         {/* Right: Executive Meeting Card */}
-        <div className="lg:col-span-5 flex flex-col gap-5">
-          <div className="space-y-3">
-            <h1 className="text-3xl sm:text-[40px] font-extrabold tracking-[-0.03em] text-[#111827] leading-[1.1]">
+        <div className="lg:col-span-5 flex flex-col gap-4 sm:gap-5 min-w-0">
+          <div className="space-y-2 sm:space-y-3">
+            <h1 className="text-2xl sm:text-3xl lg:text-[40px] font-extrabold tracking-[-0.03em] text-[#111827] leading-[1.12]">
               Private conversations,{' '}
               <span className="text-[#0D6E4E]">without the clutter.</span>
             </h1>
-            <p className="text-[14px] text-[#4B5563] leading-relaxed">
+            <p className="text-xs sm:text-[14px] text-[#4B5563] leading-relaxed">
               Guptgu delivers direct peer-to-peer video, crisp screen sharing, and low-bandwidth resilience — no sign-up, no tracking.
             </p>
           </div>
 
-          <div className="bg-white border border-[#E4E7E4] rounded-3xl p-6 space-y-5 shadow-[0_1px_3px_rgba(16,24,40,0.04),0_20px_40px_-14px_rgba(16,24,40,0.07)]">
+          <div className="bg-white border border-[#E4E7E4] rounded-2xl sm:rounded-3xl p-4 sm:p-6 space-y-4 sm:space-y-5 shadow-[0_1px_3px_rgba(16,24,40,0.04),0_20px_40px_-14px_rgba(16,24,40,0.07)]">
             {lobbyStatus === 'waiting' ? (
               <div className="py-8 flex flex-col items-center text-center gap-4">
                 <div className="w-14 h-14 rounded-2xl bg-[#EDF7F2] border border-[#CBE7D8] flex items-center justify-center text-[#0D6E4E]">
