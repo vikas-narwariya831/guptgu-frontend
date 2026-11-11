@@ -33,17 +33,21 @@ function releaseAudioContext() {
   }
 }
 
+const IS_MOBILE =
+  typeof navigator !== 'undefined' &&
+  /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
 /**
  * Memory-optimized voice level monitor (0..1):
- * - Reuses 1 shared AudioContext across all participants
+ * - Automatically disabled on mobile devices to preserve WebRTC hardware audio pipeline & FPS
+ * - Reuses 1 shared AudioContext across all participants on desktop
  * - Samples every 120ms (~8Hz) instead of 60fps rAF
- * - Quantizes output to prevent unnecessary React re-renders during silence
  */
 export function useAudioLevel(stream: MediaStream | null, isMuted: boolean): number {
   const [level, setLevel] = useState(0);
 
   useEffect(() => {
-    if (!stream || isMuted) {
+    if (IS_MOBILE || !stream || isMuted) {
       setLevel(0);
       return;
     }

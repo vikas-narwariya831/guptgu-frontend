@@ -52,7 +52,7 @@ function VideoTile({
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-[22px] border transition-all duration-300 ${
+      className={`group relative overflow-hidden rounded-[22px] border transition-colors duration-200 ${
         hasLiveVideo
           ? 'bg-[#111614]'
           : 'bg-gradient-to-br from-white via-[#F9FCFA] to-[#EFF7F3]'
@@ -70,6 +70,7 @@ function VideoTile({
         ref={videoRef}
         autoPlay
         playsInline
+        disablePictureInPicture
         muted={isLocal}
         className={`w-full h-full ${isScreenSharing ? 'object-contain bg-[#0A0E0C]' : 'object-cover'} ${
           isLocal && !isScreenSharing ? '-scale-x-100' : ''
@@ -126,9 +127,9 @@ function VideoTile({
         )}
       </div>
 
-      {/* Bottom Nameplate */}
+      {/* Bottom Nameplate (no backdrop-blur over video to eliminate mobile GPU lag) */}
       <div className="absolute bottom-3.5 left-3.5 right-3.5 flex items-center justify-between pointer-events-none">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/95 backdrop-blur-md border border-[#E4E7E4] shadow-sm text-xs font-semibold text-[#111827] max-w-[85%]">
+        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/95 border border-[#E4E7E4] shadow-sm text-xs font-semibold text-[#111827] max-w-[85%]">
           {isHost && <Crown size={12} className="text-[#0D6E4E] shrink-0" />}
           <span className="truncate">
             {name} {isLocal ? '(You)' : ''}

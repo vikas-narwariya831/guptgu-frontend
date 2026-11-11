@@ -35,6 +35,10 @@ function buildIceServers(): RTCConfiguration {
 
 const ICE_SERVERS: RTCConfiguration = buildIceServers();
 
+const isMobileDevice = (): boolean =>
+  typeof navigator !== 'undefined' &&
+  /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
 const DEFAULT_NETWORK_STATS: NetworkStats = {
   quality: 'good',
   rttMs: null,
@@ -83,10 +87,15 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
 
-  // Adaptive Low-Internet Quality & Stats
+  // Adaptive Low-Internet & Mobile Quality Mode
   const [videoQualityMode, setVideoQualityMode] = useState<VideoQualityMode>(() => {
     const conn = (navigator as unknown as { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
-    if (conn?.saveData || conn?.effectiveType === '2g' || conn?.effectiveType === 'slow-2g') {
+    if (
+      isMobileDevice() ||
+      conn?.saveData ||
+      conn?.effectiveType === '2g' ||
+      conn?.effectiveType === 'slow-2g'
+    ) {
       return 'data-saver';
     }
     return 'auto';
@@ -125,9 +134,24 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
       localCameraStreamRef.current.getTracks().forEach((t) => t.stop());
     }
 
+    const mobile = isMobileDevice();
+    const targetWidth = mobile ? 640 : 1280;
+    const targetHeight = mobile ? 360 : 720;
+    const targetFps = mobile ? 20 : 30;
+
     const videoConstraint: MediaTrackConstraints = deviceIds?.videoId
-      ? { deviceId: { exact: deviceIds.videoId }, width: { ideal: 1280 }, height: { ideal: 720 } }
-      : { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' };
+      ? {
+          deviceId: { exact: deviceIds.videoId },
+          width: { ideal: targetWidth },
+          height: { ideal: targetHeight },
+          frameRate: { ideal: targetFps, max: mobile ? 24 : 30 }
+        }
+      : {
+          width: { ideal: targetWidth },
+          height: { ideal: targetHeight },
+          frameRate: { ideal: targetFps, max: mobile ? 24 : 30 },
+          facingMode: 'user'
+        };
 
     const audioConstraint: MediaTrackConstraints = deviceIds?.audioId
       ? { deviceId: { exact: deviceIds.audioId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
@@ -312,9 +336,11 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
         scaleDown = 4;
         maxFps = 5;
       } else if (effectiveMode === 'data-saver') {
-        maxBitrate = Math.max(140_000, Math.round(240_000 / Math.min(peerCount, 2)));
-        scaleDown = 2;
-        maxFps = 15;
+        const mobile = isMobileDevice();
+        maxBitrate = Math.max(150_000, Math.round((mobile ? 320_000 : 260_000) / Math.min(peerCount, 2)));
+        // Mobile already captures 360p directly, so avoid double-downscaling
+        scaleDown = mobile ? 1 : 2;
+        maxFps = 18;
       } else if (effectiveMode === 'auto') {
         // Split upload budget cleanly when multiple peers are connected
         maxBitrate = Math.max(250_000, Math.round(950_000 / Math.min(peerCount, 4)));

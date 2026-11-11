@@ -178,7 +178,7 @@ function ControlBar({
         </div>
       )}
 
-      <div className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-2xl bg-white/95 backdrop-blur-xl border border-[#E4E7E4] shadow-[0_1px_3px_rgba(16,24,40,0.04),0_20px_45px_-14px_rgba(16,24,40,0.14)] flex-wrap justify-center">
+      <div className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-2xl bg-white/98 md:bg-white/95 md:backdrop-blur-xl border border-[#E4E7E4] shadow-[0_1px_3px_rgba(16,24,40,0.04),0_20px_45px_-14px_rgba(16,24,40,0.14)] flex-wrap justify-center">
         {/* Mic */}
         <button
           type="button"

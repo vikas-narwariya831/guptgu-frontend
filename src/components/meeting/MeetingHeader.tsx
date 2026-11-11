@@ -58,7 +58,7 @@ function MeetingHeader({
       : webSpeed.effectiveType;
 
   return (
-    <header className="h-15 px-4 sm:px-6 border-b border-[#E6E9E6] bg-white/95 backdrop-blur-md flex items-center justify-between shrink-0 z-20">
+    <header className="h-15 px-4 sm:px-6 border-b border-[#E6E9E6] bg-white md:bg-white/95 md:backdrop-blur-md flex items-center justify-between shrink-0 z-20">
       <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
         <div className="w-8 h-8 rounded-xl bg-[#0D6E4E] flex items-center justify-center text-white shrink-0 shadow-sm shadow-[#0D6E4E]/20">
           <Video size={16} />

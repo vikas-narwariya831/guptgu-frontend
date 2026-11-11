@@ -136,18 +136,18 @@ export default function LobbyScreen({
 
   return (
     <div className="min-h-screen w-full bg-[#FAFBF9] text-[#111827] flex flex-col justify-between relative overflow-hidden">
-      {/* Subtle Architectural Backdrop */}
+      {/* Subtle Architectural Backdrop (desktop only to prevent mobile GPU blur lag) */}
       <div
-        className="fixed inset-0 pointer-events-none opacity-[0.45]"
+        className="hidden md:block fixed inset-0 pointer-events-none opacity-[0.45]"
         style={{
           backgroundImage: 'radial-gradient(#D5DBD6 1px, transparent 1px)',
           backgroundSize: '24px 24px'
         }}
       />
-      <div className="fixed -top-48 left-1/3 w-[560px] h-[560px] rounded-full bg-[#DCEFE5]/60 blur-[140px] pointer-events-none" />
+      <div className="hidden md:block fixed -top-48 left-1/3 w-[560px] h-[560px] rounded-full bg-[#DCEFE5]/60 blur-[140px] pointer-events-none" />
 
       {/* Header */}
-      <header className="relative z-10 w-full bg-white/90 backdrop-blur-md border-b border-[#E6E9E6]">
+      <header className="relative z-10 w-full bg-white/95 md:bg-white/90 md:backdrop-blur-md border-b border-[#E6E9E6]">
         <div className="max-w-6xl mx-auto px-4 sm:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             {/* Custom Guptgu Emblem */}
@@ -233,7 +233,7 @@ export default function LobbyScreen({
               )}
 
               {/* Live Mic Meter Pill */}
-              <div className="absolute top-3.5 left-3.5 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/55 backdrop-blur-md border border-white/10 text-[11px] font-medium text-white">
+              <div className="absolute top-3.5 left-3.5 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/75 border border-white/10 text-[11px] font-medium text-white">
                 {!isMuted ? (
                   <span className="flex items-end gap-0.5 h-3">
                     <span
@@ -256,7 +256,7 @@ export default function LobbyScreen({
               </div>
 
               {/* Preview Controls Pill */}
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/95 backdrop-blur-md p-1.5 rounded-2xl border border-[#E4E7E4] shadow-xl">
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/95 p-1.5 rounded-2xl border border-[#E4E7E4] shadow-xl">
                 <button
                   type="button"
                   onClick={onToggleMute}
