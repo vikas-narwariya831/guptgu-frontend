@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useWebRTC } from './hooks/useWebRTC';
 import { useMeetingShortcuts } from './hooks/useMeetingShortcuts';
 import { useNetworkSpeed } from './hooks/useNetworkSpeed';
@@ -7,11 +7,13 @@ import LobbyScreen from './components/lobby/LobbyScreen';
 import MeetingHeader from './components/meeting/MeetingHeader';
 import VideoStage from './components/meeting/VideoStage';
 import FloatingReactions from './components/meeting/FloatingReactions';
-import HostAdmitPopup from './components/meeting/HostAdmitPopup';
-import HostLeaveModal from './components/meeting/HostLeaveModal';
 import ControlBar from './components/meeting/ControlBar';
-import SidebarDrawer from './components/sidebar/SidebarDrawer';
 import type { ActiveSidebar, PeerInfo } from './types/meet';
+
+// Lazy-load panels & modals so 2GB RAM phones only allocate them when opened
+const HostAdmitPopup = lazy(() => import('./components/meeting/HostAdmitPopup'));
+const HostLeaveModal = lazy(() => import('./components/meeting/HostLeaveModal'));
+const SidebarDrawer = lazy(() => import('./components/sidebar/SidebarDrawer'));
 
 export default function App() {
   const [toast, setToast] = useState('');
@@ -59,25 +61,57 @@ export default function App() {
     }
   }, [webrtc.messages, activeSidebar, webrtc.selfId]);
 
-  const handleCopyInvite = () => {
+  const handleCopyInvite = useCallback(() => {
     const url = `${window.location.origin}/?room=${webrtc.roomId}`;
     navigator.clipboard.writeText(url);
     setCopied(true);
     showToast('Meeting link copied to clipboard!');
     setTimeout(() => setCopied(false), 2000);
-  };
+  }, [webrtc.roomId, showToast]);
 
-  const handleToggleSidebar = (panel: 'chat' | 'participants' | 'host') => {
+  const handleToggleSidebar = useCallback((panel: 'chat' | 'participants' | 'host') => {
     setActiveSidebar((prev) => (prev === panel ? 'none' : panel));
-  };
+  }, []);
 
-  const handleLeaveClick = () => {
+  const handleTogglePin = useCallback((id: string) => {
+    setPinnedPeerId((prev) => (prev === id ? null : id));
+  }, []);
+
+  const handleLeaveClick = useCallback(() => {
     if (webrtc.isHost && webrtc.remotePeers.length > 0) {
       setShowHostLeaveModal(true);
     } else {
       webrtc.leaveMeeting();
     }
-  };
+  }, [webrtc.isHost, webrtc.remotePeers.length, webrtc.leaveMeeting]);
+
+  const selfPeer: PeerInfo = useMemo(
+    () => ({
+      id: webrtc.selfId,
+      name: webrtc.selfName || 'You',
+      isMuted: webrtc.isMuted,
+      isCameraOff: webrtc.isCameraOff,
+      isScreenSharing: webrtc.isScreenSharing,
+      isHandRaised: webrtc.isHandRaised,
+      isHost: webrtc.isHost,
+      stream: webrtc.localStream
+    }),
+    [
+      webrtc.selfId,
+      webrtc.selfName,
+      webrtc.isMuted,
+      webrtc.isCameraOff,
+      webrtc.isScreenSharing,
+      webrtc.isHandRaised,
+      webrtc.isHost,
+      webrtc.localStream
+    ]
+  );
+
+  const allPeers = useMemo(
+    () => [selfPeer, ...webrtc.remotePeers],
+    [selfPeer, webrtc.remotePeers]
+  );
 
   if (!webrtc.inCall) {
     return (
@@ -90,10 +124,12 @@ export default function App() {
           isMuted={webrtc.isMuted}
           isCameraOff={webrtc.isCameraOff}
           isConnected={webrtc.isConnected}
+          liteMode={webrtc.liteMode}
           webSpeed={webSpeed}
           onInitMedia={webrtc.initLocalMedia}
           onToggleMute={webrtc.toggleMute}
           onToggleCamera={webrtc.toggleCamera}
+          onToggleLiteMode={webrtc.setLiteMode}
           onJoinMeeting={webrtc.joinMeeting}
         />
         <ToastBanner message={toast} position="lobby" />
@@ -101,21 +137,8 @@ export default function App() {
     );
   }
 
-  const selfPeer: PeerInfo = {
-    id: webrtc.selfId,
-    name: webrtc.selfName || 'You',
-    isMuted: webrtc.isMuted,
-    isCameraOff: webrtc.isCameraOff,
-    isScreenSharing: webrtc.isScreenSharing,
-    isHandRaised: webrtc.isHandRaised,
-    isHost: webrtc.isHost,
-    stream: webrtc.localStream
-  };
-
-  const allPeers = [selfPeer, ...webrtc.remotePeers];
-
   return (
-    <div className="h-dvh w-full bg-[#FAFBF9] text-[#111827] flex flex-col overflow-hidden relative select-none">
+    <div className="h-dvh w-full bg-[#0E1116] text-neutral-100 flex flex-col overflow-hidden relative select-none">
       <MeetingHeader
         roomId={webrtc.roomId}
         copied={copied}
@@ -136,44 +159,51 @@ export default function App() {
             selfId={webrtc.selfId}
             pinnedPeerId={pinnedPeerId}
             copied={copied}
-            onTogglePin={(id) => setPinnedPeerId((prev) => (prev === id ? null : id))}
+            liteMode={webrtc.liteMode}
+            onTogglePin={handleTogglePin}
             onCopyInvite={handleCopyInvite}
           />
 
           <FloatingReactions reactions={webrtc.reactions} />
 
-          {webrtc.isHost && (
-            <HostAdmitPopup
-              waitingList={webrtc.waitingList}
-              onAdmit={webrtc.admitGuest}
-              onDeny={webrtc.denyGuest}
-            />
+          {webrtc.isHost && webrtc.waitingList.length > 0 && (
+            <Suspense fallback={null}>
+              <HostAdmitPopup
+                waitingList={webrtc.waitingList}
+                onAdmit={webrtc.admitGuest}
+                onDeny={webrtc.denyGuest}
+              />
+            </Suspense>
           )}
         </main>
 
-        <SidebarDrawer
-          activeTab={activeSidebar}
-          onClose={() => setActiveSidebar('none')}
-          onSwitchTab={setActiveSidebar}
-          messages={webrtc.messages}
-          selfId={webrtc.selfId}
-          isHost={webrtc.isHost}
-          selfPeer={selfPeer}
-          remotePeers={webrtc.remotePeers}
-          waitingList={webrtc.waitingList}
-          roomSettings={webrtc.roomSettings}
-          onSendMessage={webrtc.sendChatMessage}
-          onUpdateSettings={webrtc.updateRoomSettings}
-          onAdmitGuest={webrtc.admitGuest}
-          onAdmitAll={webrtc.admitAllGuests}
-          onDenyGuest={webrtc.denyGuest}
-          onMutePeer={webrtc.mutePeer}
-          onMuteAll={webrtc.muteAllPeers}
-          onLowerAllHands={webrtc.lowerAllHands}
-          onTransferHost={webrtc.transferHost}
-          onRemovePeer={webrtc.removePeer}
-          onEndMeetingForAll={webrtc.endMeetingForAll}
-        />
+        {activeSidebar !== 'none' && (
+          <Suspense fallback={null}>
+            <SidebarDrawer
+              activeTab={activeSidebar}
+              onClose={() => setActiveSidebar('none')}
+              onSwitchTab={setActiveSidebar}
+              messages={webrtc.messages}
+              selfId={webrtc.selfId}
+              isHost={webrtc.isHost}
+              selfPeer={selfPeer}
+              remotePeers={webrtc.remotePeers}
+              waitingList={webrtc.waitingList}
+              roomSettings={webrtc.roomSettings}
+              onSendMessage={webrtc.sendChatMessage}
+              onUpdateSettings={webrtc.updateRoomSettings}
+              onAdmitGuest={webrtc.admitGuest}
+              onAdmitAll={webrtc.admitAllGuests}
+              onDenyGuest={webrtc.denyGuest}
+              onMutePeer={webrtc.mutePeer}
+              onMuteAll={webrtc.muteAllPeers}
+              onLowerAllHands={webrtc.lowerAllHands}
+              onTransferHost={webrtc.transferHost}
+              onRemovePeer={webrtc.removePeer}
+              onEndMeetingForAll={webrtc.endMeetingForAll}
+            />
+          </Suspense>
+        )}
       </div>
 
       <ControlBar
@@ -188,10 +218,13 @@ export default function App() {
         unreadCount={unreadCount}
         participantCount={allPeers.length}
         copied={copied}
+        liteMode={webrtc.liteMode}
+        deviceMemoryGb={webrtc.deviceMemoryGb}
         videoQualityMode={webrtc.videoQualityMode}
         networkStats={webrtc.networkStats}
         webSpeed={webSpeed}
         onSelectQuality={webrtc.setVideoQuality}
+        onToggleLiteMode={webrtc.setLiteMode}
         onToggleMute={webrtc.toggleMute}
         onToggleCamera={webrtc.toggleCamera}
         onToggleScreenShare={webrtc.toggleScreenShare}
@@ -202,18 +235,22 @@ export default function App() {
         onLeave={handleLeaveClick}
       />
 
-      <HostLeaveModal
-        isOpen={showHostLeaveModal}
-        onClose={() => setShowHostLeaveModal(false)}
-        onJustLeave={() => {
-          setShowHostLeaveModal(false);
-          webrtc.leaveMeeting();
-        }}
-        onEndForAll={() => {
-          setShowHostLeaveModal(false);
-          webrtc.endMeetingForAll();
-        }}
-      />
+      {showHostLeaveModal && (
+        <Suspense fallback={null}>
+          <HostLeaveModal
+            isOpen={showHostLeaveModal}
+            onClose={() => setShowHostLeaveModal(false)}
+            onJustLeave={() => {
+              setShowHostLeaveModal(false);
+              webrtc.leaveMeeting();
+            }}
+            onEndForAll={() => {
+              setShowHostLeaveModal(false);
+              webrtc.endMeetingForAll();
+            }}
+          />
+        </Suspense>
+      )}
 
       <ToastBanner message={toast} position="call" />
     </div>

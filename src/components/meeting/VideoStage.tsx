@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { UserPlus, Copy, Check } from 'lucide-react';
 import type { PeerInfo } from '../../types/meet';
 import VideoTile from './VideoTile';
@@ -7,15 +8,17 @@ interface VideoStageProps {
   selfId: string;
   pinnedPeerId: string | null;
   copied: boolean;
+  liteMode?: boolean;
   onTogglePin: (peerId: string) => void;
   onCopyInvite: () => void;
 }
 
-export default function VideoStage({
+function VideoStage({
   peers,
   selfId,
   pinnedPeerId,
   copied,
+  liteMode = false,
   onTogglePin,
   onCopyInvite
 }: VideoStageProps) {
@@ -38,6 +41,7 @@ export default function VideoStage({
       <div className="flex-1 flex flex-col lg:flex-row gap-2.5 sm:gap-3.5 min-h-0">
         <div className="flex-1 min-h-[240px]">
           <VideoTile
+            peerId={spotlightPeer.id}
             name={spotlightPeer.name}
             stream={spotlightPeer.stream || null}
             isLocal={spotlightPeer.id === selfId}
@@ -47,7 +51,9 @@ export default function VideoStage({
             isHandRaised={spotlightPeer.isHandRaised}
             isHost={spotlightPeer.isHost}
             isPinned={pinnedPeerId === spotlightPeer.id}
-            onTogglePin={() => onTogglePin(spotlightPeer.id)}
+            liteMode={liteMode}
+            disableVideoDecoder={false}
+            onTogglePin={onTogglePin}
           />
         </div>
 
@@ -56,6 +62,7 @@ export default function VideoStage({
             {stripPeers.map((peer) => (
               <div key={peer.id} className="w-36 sm:w-48 lg:w-full h-28 sm:h-36 lg:h-44 shrink-0">
                 <VideoTile
+                  peerId={peer.id}
                   name={peer.name}
                   stream={peer.stream || null}
                   isLocal={peer.id === selfId}
@@ -65,7 +72,9 @@ export default function VideoStage({
                   isHandRaised={peer.isHandRaised}
                   isHost={peer.isHost}
                   isPinned={false}
-                  onTogglePin={() => onTogglePin(peer.id)}
+                  liteMode={liteMode}
+                  disableVideoDecoder={liteMode}
+                  onTogglePin={onTogglePin}
                 />
               </div>
             ))}
@@ -75,39 +84,62 @@ export default function VideoStage({
     );
   }
 
+  let activeLiteRemoteDecoders = 0;
+
   return (
     <div className="relative flex-1 flex min-h-0">
-      <div className={`grid ${gridColsClass} gap-3.5 w-full h-full auto-rows-fr`}>
-        {peers.map((peer) => (
-          <VideoTile
-            key={peer.id}
-            name={peer.name}
-            stream={peer.stream || null}
-            isLocal={peer.id === selfId}
-            isMuted={peer.isMuted}
-            isCameraOff={peer.isCameraOff}
-            isScreenSharing={peer.isScreenSharing}
-            isHandRaised={peer.isHandRaised}
-            isHost={peer.isHost}
-            isPinned={false}
-            onTogglePin={peers.length > 1 ? () => onTogglePin(peer.id) : undefined}
-          />
-        ))}
+      <div className={`grid ${gridColsClass} gap-3 sm:gap-3.5 w-full h-full auto-rows-fr`}>
+        {peers.map((peer) => {
+          const isLocal = peer.id === selfId;
+          let disableDecoder = false;
+
+          if (liteMode) {
+            if (isLocal && peers.length > 2) {
+              // Pause local mirror preview when 3+ people are in grid to free a hardware decoder
+              disableDecoder = true;
+            } else if (!isLocal && !peer.isCameraOff && peer.stream) {
+              activeLiteRemoteDecoders += 1;
+              // Budget 2GB mobile GPUs handle up to 2 simultaneous live remote video surfaces smoothly
+              if (activeLiteRemoteDecoders > 2) {
+                disableDecoder = true;
+              }
+            }
+          }
+
+          return (
+            <VideoTile
+              key={peer.id}
+              peerId={peer.id}
+              name={peer.name}
+              stream={peer.stream || null}
+              isLocal={isLocal}
+              isMuted={peer.isMuted}
+              isCameraOff={peer.isCameraOff}
+              isScreenSharing={peer.isScreenSharing}
+              isHandRaised={peer.isHandRaised}
+              isHost={peer.isHost}
+              isPinned={false}
+              liteMode={liteMode}
+              disableVideoDecoder={disableDecoder}
+              onTogglePin={peers.length > 1 ? onTogglePin : undefined}
+            />
+          );
+        })}
       </div>
 
       {peers.length === 1 && (
-        <div className="flex items-center gap-2.5 sm:gap-3 px-3 sm:px-4 py-2 sm:py-2.5 rounded-2xl bg-white/95 border border-[#E4E7E4] shadow-[0_8px_24px_-4px_rgba(17,24,39,0.1)] absolute bottom-2 right-2 left-2 sm:left-auto sm:bottom-3 sm:right-3 z-10">
-          <div className="w-8 h-8 rounded-xl bg-[#EDF7F2] border border-[#CBE7D8] flex items-center justify-center text-[#0D6E4E] shrink-0">
+        <div className="flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-[#161A22] border border-white/10 absolute bottom-2 right-2 left-2 sm:left-auto sm:bottom-3 sm:right-3 z-10">
+          <div className="w-8 h-8 rounded-lg bg-[#222834] flex items-center justify-center text-neutral-300 shrink-0">
             <UserPlus size={15} />
           </div>
           <div className="text-left flex-1 min-w-0">
-            <p className="text-xs font-bold text-[#111827] truncate">You&apos;re the only one here</p>
-            <p className="text-[11px] text-[#6B7280] truncate">Share Guptgu link to invite others</p>
+            <p className="text-xs font-medium text-neutral-100 truncate">Waiting for others</p>
+            <p className="text-[11px] text-neutral-400 truncate">Share invite link</p>
           </div>
           <button
             type="button"
             onClick={onCopyInvite}
-            className="ml-1 sm:ml-2 px-3 py-1.5 rounded-xl bg-[#0D6E4E] hover:bg-[#0A573D] text-white text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
+            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shrink-0"
           >
             {copied ? <Check size={12} /> : <Copy size={12} />}
             <span>{copied ? 'Copied' : 'Copy'}</span>
@@ -117,3 +149,5 @@ export default function VideoStage({
     </div>
   );
 }
+
+export default memo(VideoStage);

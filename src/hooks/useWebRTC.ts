@@ -1,5 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { socket } from '../utils/socket';
+import {
+  DEVICE_PROFILE,
+  getCameraVideoConstraints,
+  getScreenShareVideoConstraints,
+  optimizeAcquiredScreenTrack,
+  prioritizeLightweightVideoCodecs
+} from '../utils/deviceProfile';
 import type {
   ChatMessage,
   FloatingReaction,
@@ -35,9 +42,16 @@ function buildIceServers(): RTCConfiguration {
 
 const ICE_SERVERS: RTCConfiguration = buildIceServers();
 
-const isMobileDevice = (): boolean =>
-  typeof navigator !== 'undefined' &&
-  /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+const getInitialLiteMode = (): boolean => {
+  try {
+    const saved = localStorage.getItem('guptgu_lite_mode');
+    if (saved === '1') return true;
+    if (saved === '0') return false;
+  } catch {
+    // ignore storage access issues
+  }
+  return DEVICE_PROFILE.isLowRamDevice || DEVICE_PROFILE.isMobile;
+};
 
 const DEFAULT_NETWORK_STATS: NetworkStats = {
   quality: 'good',
@@ -87,15 +101,10 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
 
-  // Adaptive Low-Internet & Mobile Quality Mode
+  // Adaptive Low-Internet & 2GB RAM Lite Mode
+  const [liteMode, setLiteModeState] = useState<boolean>(getInitialLiteMode);
   const [videoQualityMode, setVideoQualityMode] = useState<VideoQualityMode>(() => {
-    const conn = (navigator as unknown as { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
-    if (
-      isMobileDevice() ||
-      conn?.saveData ||
-      conn?.effectiveType === '2g' ||
-      conn?.effectiveType === 'slow-2g'
-    ) {
+    if (DEVICE_PROFILE.isLowRamDevice || DEVICE_PROFILE.isMobile || getInitialLiteMode()) {
       return 'data-saver';
     }
     return 'auto';
@@ -107,12 +116,18 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
   const localScreenStreamRef = useRef<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const pendingCandidatesRef = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
+  const lastSenderConfigRef = useRef<WeakMap<RTCRtpSender, string>>(new WeakMap());
   const isMutedRef = useRef(isMuted);
   const isCameraOffRef = useRef(isCameraOff);
   const isScreenSharingRef = useRef(isScreenSharing);
   const hostIdRef = useRef(hostId);
   const roomSettingsRef = useRef(roomSettings);
   const videoQualityModeRef = useRef(videoQualityMode);
+  const liteModeRef = useRef(liteMode);
+  const selectedVideoIdRef = useRef<string | undefined>(undefined);
+  const pausedCameraForShareRef = useRef(false);
+  const screenScaleDownRef = useRef(1);
+  const cameraBusyRef = useRef(false);
   const camStateBeforeAudioOnlyRef = useRef<boolean | null>(null);
 
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
@@ -121,6 +136,7 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
   useEffect(() => { hostIdRef.current = hostId; }, [hostId]);
   useEffect(() => { roomSettingsRef.current = roomSettings; }, [roomSettings]);
   useEffect(() => { videoQualityModeRef.current = videoQualityMode; }, [videoQualityMode]);
+  useEffect(() => { liteModeRef.current = liteMode; }, [liteMode]);
 
   const isHost = Boolean(socket.id && hostId && socket.id === hostId);
 
@@ -134,41 +150,35 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
       localCameraStreamRef.current.getTracks().forEach((t) => t.stop());
     }
 
-    const mobile = isMobileDevice();
-    const targetWidth = mobile ? 640 : 1280;
-    const targetHeight = mobile ? 360 : 720;
-    const targetFps = mobile ? 20 : 30;
-
-    const videoConstraint: MediaTrackConstraints = deviceIds?.videoId
-      ? {
-          deviceId: { exact: deviceIds.videoId },
-          width: { ideal: targetWidth },
-          height: { ideal: targetHeight },
-          frameRate: { ideal: targetFps, max: mobile ? 24 : 30 }
-        }
-      : {
-          width: { ideal: targetWidth },
-          height: { ideal: targetHeight },
-          frameRate: { ideal: targetFps, max: mobile ? 24 : 30 },
-          facingMode: 'user'
-        };
+    selectedVideoIdRef.current = deviceIds?.videoId;
+    const videoConstraint = getCameraVideoConstraints(liteModeRef.current, deviceIds?.videoId);
 
     const audioConstraint: MediaTrackConstraints = deviceIds?.audioId
       ? { deviceId: { exact: deviceIds.audioId }, echoCancellation: true, noiseSuppression: true, autoGainControl: true }
       : { echoCancellation: true, noiseSuppression: true, autoGainControl: true };
 
     let stream: MediaStream | null = null;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: videoConstraint,
-        audio: audioConstraint
-      });
-    } catch {
+    const skipInitialVideo = startCamOff && liteModeRef.current;
+
+    if (!skipInitialVideo) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: videoConstraint,
+          audio: audioConstraint
+        });
+      } catch {
+        stream = null;
+      }
+    }
+
+    if (!stream) {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraint, video: false });
         setIsCameraOff(true);
         isCameraOffRef.current = true;
-        onMediaWarning?.('Camera not available — joined with microphone only.');
+        if (!skipInitialVideo) {
+          onMediaWarning?.('Camera not available — joined with microphone only.');
+        }
       } catch {
         stream = null;
         setIsMuted(true);
@@ -201,6 +211,8 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
     localScreenStreamRef.current?.getTracks().forEach((t) => t.stop());
     localCameraStreamRef.current = null;
     localScreenStreamRef.current = null;
+    pausedCameraForShareRef.current = false;
+    screenScaleDownRef.current = 1;
     setLocalCameraStream(null);
     setLocalDisplayStream(null);
     setIsScreenSharing(false);
@@ -253,6 +265,8 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
     } else {
       pc.addTransceiver('video', { direction: 'sendrecv' });
     }
+
+    prioritizeLightweightVideoCodecs(pc, liteModeRef.current || DEVICE_PROFILE.isMobile);
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
@@ -318,31 +332,97 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
   }, []);
 
   /**
+   * Stops the camera hardware track completely (releasing Camera2 / encoder / YUV RAM
+   * buffers on 2GB phones) while keeping the microphone audio track running untouched.
+   */
+  const releaseCameraTrack = useCallback(async (replaceSender = true) => {
+    const current = localCameraStreamRef.current;
+    if (!current) return;
+    const videoTracks = current.getVideoTracks();
+    if (videoTracks.length === 0) return;
+
+    videoTracks.forEach((t) => {
+      current.removeTrack(t);
+      t.stop();
+    });
+
+    const audioOnlyStream = new MediaStream(current.getAudioTracks());
+    localCameraStreamRef.current = audioOnlyStream;
+    setLocalCameraStream(audioOnlyStream);
+    if (!isScreenSharingRef.current) {
+      setLocalDisplayStream(audioOnlyStream);
+    }
+    if (replaceSender) {
+      await replaceOutgoingVideoTrack(null);
+    }
+  }, [replaceOutgoingVideoTrack]);
+
+  /**
+   * Acquires only a fresh video camera track and attaches it to the active call stream.
+   */
+  const acquireCameraTrackOnly = useCallback(async (): Promise<MediaStreamTrack | null> => {
+    const videoConstraint = getCameraVideoConstraints(
+      liteModeRef.current,
+      selectedVideoIdRef.current
+    );
+    const camOnlyStream = await navigator.mediaDevices.getUserMedia({
+      video: videoConstraint,
+      audio: false
+    });
+    const newTrack = camOnlyStream.getVideoTracks()[0];
+    if (!newTrack) return null;
+
+    const existingAudio = localCameraStreamRef.current?.getAudioTracks() || [];
+    localCameraStreamRef.current?.getVideoTracks().forEach((t) => t.stop());
+
+    const merged = new MediaStream([...existingAudio, newTrack]);
+    localCameraStreamRef.current = merged;
+    setLocalCameraStream(merged);
+    if (!isScreenSharingRef.current) {
+      setLocalDisplayStream(merged);
+      await replaceOutgoingVideoTrack(newTrack);
+    }
+    return newTrack;
+  }, [replaceOutgoingVideoTrack]);
+
+  /**
    * Applies adaptive video bitrate, resolution scaling, and framerate caps
-   * across all active WebRTC peer connections based on selected quality mode & peer count.
+   * across all active WebRTC peer connections. Deduplicates unchanged writes so
+   * hardware encoders never reset unnecessarily every stats tick.
    */
   const applyBitrateProfile = useCallback(
-    async (mode: VideoQualityMode, networkIsPoor = false): Promise<number> => {
+    async (mode: VideoQualityMode, networkIsPoor = false, force = false): Promise<number> => {
       const peerCount = Math.max(1, peerConnectionsRef.current.size);
       const effectiveMode: VideoQualityMode =
         mode === 'auto' && networkIsPoor ? 'data-saver' : mode;
+      const isLite = liteModeRef.current;
+      const sharing = isScreenSharingRef.current;
 
       let maxBitrate = 1_200_000;
       let scaleDown = 1;
       let maxFps = 30;
+      let degradation: RTCDegradationPreference = 'maintain-framerate';
 
-      if (effectiveMode === 'audio-only') {
+      if (sharing) {
+        maxBitrate = isLite
+          ? Math.max(180_000, Math.round((DEVICE_PROFILE.isLowRamDevice ? 320_000 : 450_000) / Math.min(peerCount, 2)))
+          : effectiveMode === 'data-saver'
+          ? Math.max(250_000, Math.round(500_000 / Math.min(peerCount, 2)))
+          : Math.max(400_000, Math.round(1_100_000 / Math.min(peerCount, 3)));
+        scaleDown = screenScaleDownRef.current;
+        maxFps = isLite ? (DEVICE_PROFILE.isLowRamDevice ? 8 : 10) : 15;
+        degradation = 'maintain-resolution';
+      } else if (effectiveMode === 'audio-only') {
         maxBitrate = 60_000;
         scaleDown = 4;
         maxFps = 5;
-      } else if (effectiveMode === 'data-saver') {
-        const mobile = isMobileDevice();
-        maxBitrate = Math.max(150_000, Math.round((mobile ? 320_000 : 260_000) / Math.min(peerCount, 2)));
-        // Mobile already captures 360p directly, so avoid double-downscaling
-        scaleDown = mobile ? 1 : 2;
-        maxFps = 18;
+      } else if (effectiveMode === 'data-saver' || isLite) {
+        const capBase = isLite ? 220_000 : DEVICE_PROFILE.isMobile ? 300_000 : 260_000;
+        maxBitrate = Math.max(120_000, Math.round(capBase / Math.min(peerCount, 2)));
+        // Mobile & Lite already capture 270p/360p directly, so avoid double-downscaling
+        scaleDown = DEVICE_PROFILE.isMobile || isLite ? 1 : 2;
+        maxFps = isLite ? 15 : 18;
       } else if (effectiveMode === 'auto') {
-        // Split upload budget cleanly when multiple peers are connected
         maxBitrate = Math.max(250_000, Math.round(950_000 / Math.min(peerCount, 4)));
         scaleDown = peerCount >= 4 ? 1.5 : 1;
         maxFps = peerCount >= 4 ? 20 : 28;
@@ -352,12 +432,15 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
         maxFps = 30;
       }
 
+      const profileKey = `${maxBitrate}:${scaleDown}:${maxFps}:${degradation}`;
       const updates: Promise<void>[] = [];
+
       peerConnectionsRef.current.forEach((pc) => {
         const videoSender = pc
           .getTransceivers()
           .find((t) => t.sender?.track?.kind === 'video' || t.receiver?.track?.kind === 'video')?.sender;
         if (!videoSender) return;
+        if (!force && lastSenderConfigRef.current.get(videoSender) === profileKey) return;
 
         updates.push(
           (async () => {
@@ -367,11 +450,11 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
                 params.encodings = [{}];
               }
               params.encodings[0].maxBitrate = maxBitrate;
-              // Preserve higher resolution when sharing screen, otherwise scale down on low net
-              params.encodings[0].scaleResolutionDownBy = isScreenSharingRef.current ? 1 : scaleDown;
-              params.encodings[0].maxFramerate = isScreenSharingRef.current ? 15 : maxFps;
-              params.degradationPreference = 'maintain-framerate';
+              params.encodings[0].scaleResolutionDownBy = scaleDown;
+              params.encodings[0].maxFramerate = maxFps;
+              params.degradationPreference = degradation;
               await videoSender.setParameters(params);
+              lastSenderConfigRef.current.set(videoSender, profileKey);
             } catch {
               // Some browsers restrict setParameters on inactive senders
             }
@@ -388,16 +471,37 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
   const stopScreenShare = useCallback(async () => {
     localScreenStreamRef.current?.getTracks().forEach((t) => t.stop());
     localScreenStreamRef.current = null;
+    screenScaleDownRef.current = 1;
     setIsScreenSharing(false);
+    isScreenSharingRef.current = false;
 
-    const camTrack = localCameraStreamRef.current?.getVideoTracks()[0] || null;
-    await replaceOutgoingVideoTrack(camTrack);
-    setLocalDisplayStream(localCameraStreamRef.current);
+    const shouldRestoreCamera = pausedCameraForShareRef.current && !isCameraOffRef.current;
+    pausedCameraForShareRef.current = false;
+
+    if (shouldRestoreCamera) {
+      try {
+        await acquireCameraTrackOnly();
+      } catch {
+        setIsCameraOff(true);
+        isCameraOffRef.current = true;
+        await replaceOutgoingVideoTrack(null);
+        setLocalDisplayStream(localCameraStreamRef.current);
+        if (inCall) socket.emit('media-state-changed', { isCameraOff: true });
+      }
+    } else {
+      const camTrack = !isCameraOffRef.current
+        ? localCameraStreamRef.current?.getVideoTracks()[0] || null
+        : null;
+      await replaceOutgoingVideoTrack(camTrack);
+      setLocalDisplayStream(localCameraStreamRef.current);
+    }
+
+    await applyBitrateProfile(videoQualityModeRef.current, false, true);
 
     if (inCall) {
       socket.emit('media-state-changed', { isScreenSharing: false });
     }
-  }, [inCall, replaceOutgoingVideoTrack]);
+  }, [acquireCameraTrackOnly, applyBitrateProfile, inCall, replaceOutgoingVideoTrack]);
 
   // ── Socket Signaling & Host Management Listeners ─────────────────────────
   useEffect(() => {
@@ -739,20 +843,61 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
     }
   }, [inCall, onMediaWarning]);
 
-  const toggleCamera = useCallback(() => {
+  const toggleCamera = useCallback(async () => {
+    if (cameraBusyRef.current) return;
     const stream = localCameraStreamRef.current;
     const videoTrack = stream?.getVideoTracks()[0];
-    if (!videoTrack) {
-      onMediaWarning?.('No camera found on this device.');
+    const nextCamOff = !isCameraOffRef.current;
+
+    if (nextCamOff) {
+      setIsCameraOff(true);
+      isCameraOffRef.current = true;
+      pausedCameraForShareRef.current = false;
+
+      if (liteModeRef.current) {
+        // Free hardware camera sensor & frame buffers completely in 2GB RAM Lite Mode
+        await releaseCameraTrack(!isScreenSharingRef.current);
+      } else if (videoTrack) {
+        videoTrack.enabled = false;
+      }
+
+      if (inCall) {
+        socket.emit('media-state-changed', { isCameraOff: true });
+      }
       return;
     }
-    const nextCamOff = !isCameraOffRef.current;
-    videoTrack.enabled = !nextCamOff;
-    setIsCameraOff(nextCamOff);
-    if (inCall) {
-      socket.emit('media-state-changed', { isCameraOff: nextCamOff });
+
+    // Turning camera back ON
+    if (videoTrack && videoTrack.readyState === 'live') {
+      videoTrack.enabled = true;
+      setIsCameraOff(false);
+      isCameraOffRef.current = false;
+      if (inCall) {
+        socket.emit('media-state-changed', { isCameraOff: false });
+      }
+      return;
     }
-  }, [inCall, onMediaWarning]);
+
+    // Re-acquire camera track cleanly when released in Lite Mode or started without camera
+    cameraBusyRef.current = true;
+    try {
+      const newTrack = await acquireCameraTrackOnly();
+      if (!newTrack) {
+        onMediaWarning?.('No camera found on this device.');
+        return;
+      }
+      setIsCameraOff(false);
+      isCameraOffRef.current = false;
+      await applyBitrateProfile(videoQualityModeRef.current, false, true);
+      if (inCall) {
+        socket.emit('media-state-changed', { isCameraOff: false });
+      }
+    } catch {
+      onMediaWarning?.('Camera permission denied or busy on this device.');
+    } finally {
+      cameraBusyRef.current = false;
+    }
+  }, [acquireCameraTrackOnly, applyBitrateProfile, inCall, onMediaWarning, releaseCameraTrack]);
 
   const toggleScreenShare = useCallback(async () => {
     if (isScreenSharingRef.current) {
@@ -768,24 +913,39 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
 
     try {
       const screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { frameRate: { ideal: 15, max: 20 } },
+        video: getScreenShareVideoConstraints(liteModeRef.current),
         audio: false
       });
 
       const screenTrack = screenStream.getVideoTracks()[0];
       if (!screenTrack) return;
 
-      // Hint encoder to prioritize crisp text/UI detail over high motion FPS
-      if ('contentHint' in screenTrack) {
-        screenTrack.contentHint = 'detail';
+      // Downscale capture resolution & FPS for 2GB RAM phones before encoding
+      screenScaleDownRef.current = await optimizeAcquiredScreenTrack(
+        screenTrack,
+        liteModeRef.current
+      );
+
+      // In Lite Mode, release active camera hardware during screen share so SoC keeps
+      // only 1 video encoder active and avoids 2GB RAM / MediaCodec OOM crashes
+      if (liteModeRef.current && !isCameraOffRef.current) {
+        const hasLiveCam = Boolean(
+          localCameraStreamRef.current?.getVideoTracks().some((t) => t.readyState === 'live')
+        );
+        if (hasLiveCam) {
+          pausedCameraForShareRef.current = true;
+          await releaseCameraTrack(false);
+        }
       }
 
       localScreenStreamRef.current = screenStream;
       setLocalDisplayStream(screenStream);
       setIsScreenSharing(true);
+      isScreenSharingRef.current = true;
 
       await replaceOutgoingVideoTrack(screenTrack);
-      await applyBitrateProfile(videoQualityModeRef.current, networkStats.quality === 'poor');
+      const capKbps = await applyBitrateProfile(videoQualityModeRef.current, false, true);
+      setNetworkStats((prev) => ({ ...prev, activeCapKbps: capKbps }));
       socket.emit('media-state-changed', { isScreenSharing: true });
 
       screenTrack.onended = () => {
@@ -796,7 +956,14 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
         onMediaWarning?.('Screen share permission cancelled or unavailable.');
       }
     }
-  }, [inCall, onMediaWarning, replaceOutgoingVideoTrack, stopScreenShare]);
+  }, [
+    applyBitrateProfile,
+    inCall,
+    onMediaWarning,
+    releaseCameraTrack,
+    replaceOutgoingVideoTrack,
+    stopScreenShare
+  ]);
 
   const toggleHandRaise = useCallback(() => {
     const next = !isHandRaised;
@@ -854,47 +1021,122 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
     socket.emit('host-end-meeting');
   }, []);
 
-  // ── Video Quality / Low-Internet Mode Switcher ───────────────────────────
+  // ── Video Quality / Low-Internet & 2GB RAM Lite Mode Switchers ───────────
   const setVideoQuality = useCallback(
     async (mode: VideoQualityMode) => {
       setVideoQualityMode(mode);
       videoQualityModeRef.current = mode;
 
-      const camTrack = localCameraStreamRef.current?.getVideoTracks()[0];
       if (mode === 'audio-only') {
         if (camStateBeforeAudioOnlyRef.current === null) {
           camStateBeforeAudioOnlyRef.current = isCameraOffRef.current;
         }
-        if (camTrack && !isCameraOffRef.current) {
-          camTrack.enabled = false;
+        if (!isCameraOffRef.current) {
           setIsCameraOff(true);
+          isCameraOffRef.current = true;
+          if (liteModeRef.current) {
+            await releaseCameraTrack(!isScreenSharingRef.current);
+          } else {
+            localCameraStreamRef.current?.getVideoTracks().forEach((t) => {
+              t.enabled = false;
+            });
+          }
           if (inCall) socket.emit('media-state-changed', { isCameraOff: true });
         }
-        onMediaWarning?.('Audio-Only mode enabled (~32 kbps) for low internet.');
+        onMediaWarning?.('Audio-Only mode enabled (~32 kbps) for low internet & RAM.');
       } else {
-        // Restore camera if it was active before switching to audio-only
-        if (camStateBeforeAudioOnlyRef.current === false && camTrack && isCameraOffRef.current) {
-          camTrack.enabled = true;
-          setIsCameraOff(false);
-          if (inCall) socket.emit('media-state-changed', { isCameraOff: false });
+        if (camStateBeforeAudioOnlyRef.current === false && isCameraOffRef.current) {
+          const liveCam = localCameraStreamRef.current?.getVideoTracks()[0];
+          if (liveCam && liveCam.readyState === 'live') {
+            liveCam.enabled = true;
+            setIsCameraOff(false);
+            isCameraOffRef.current = false;
+            if (inCall) socket.emit('media-state-changed', { isCameraOff: false });
+          } else if (!isScreenSharingRef.current) {
+            try {
+              const restored = await acquireCameraTrackOnly();
+              if (restored) {
+                setIsCameraOff(false);
+                isCameraOffRef.current = false;
+                if (inCall) socket.emit('media-state-changed', { isCameraOff: false });
+              }
+            } catch {
+              // keep camera off cleanly if unavailable
+            }
+          }
         }
         camStateBeforeAudioOnlyRef.current = null;
         if (mode === 'data-saver') {
-          onMediaWarning?.('Data Saver active (~220 kbps, 360p @ 15fps).');
+          onMediaWarning?.('Data Saver active (~220 kbps, 270p/360p @ 15fps).');
         }
       }
 
-      const capKbps = await applyBitrateProfile(mode, networkStats.quality === 'poor');
+      const capKbps = await applyBitrateProfile(mode, networkStats.quality === 'poor', true);
       setNetworkStats((prev) => ({
         ...prev,
         activeCapKbps: capKbps,
-        isThrottled: mode === 'data-saver' || mode === 'audio-only'
+        isThrottled: mode === 'data-saver' || mode === 'audio-only' || liteModeRef.current
       }));
     },
-    [applyBitrateProfile, inCall, networkStats.quality, onMediaWarning]
+    [
+      acquireCameraTrackOnly,
+      applyBitrateProfile,
+      inCall,
+      networkStats.quality,
+      onMediaWarning,
+      releaseCameraTrack
+    ]
   );
 
-  // ── Live WebRTC pc.getStats() Network Monitor (every 4s while in call) ──
+  const setLiteMode = useCallback(
+    async (enabled: boolean) => {
+      setLiteModeState(enabled);
+      liteModeRef.current = enabled;
+      try {
+        localStorage.setItem('guptgu_lite_mode', enabled ? '1' : '0');
+      } catch {
+        // ignore storage errors
+      }
+
+      const liveCam = localCameraStreamRef.current?.getVideoTracks()[0];
+      if (enabled && isCameraOffRef.current && liveCam) {
+        await releaseCameraTrack(!isScreenSharingRef.current);
+      } else if (liveCam && liveCam.readyState === 'live' && !isScreenSharingRef.current) {
+        try {
+          await liveCam.applyConstraints(
+            getCameraVideoConstraints(enabled, selectedVideoIdRef.current)
+          );
+        } catch {
+          // safe fallback to RTCRtpSender bitrate scaling below
+        }
+      }
+
+      if (isScreenSharingRef.current) {
+        const screenTrack = localScreenStreamRef.current?.getVideoTracks()[0];
+        if (screenTrack) {
+          screenScaleDownRef.current = await optimizeAcquiredScreenTrack(screenTrack, enabled);
+        }
+      }
+
+      const capKbps = await applyBitrateProfile(videoQualityModeRef.current, false, true);
+      setNetworkStats((prev) => ({
+        ...prev,
+        activeCapKbps: capKbps,
+        isThrottled:
+          enabled ||
+          videoQualityModeRef.current === 'data-saver' ||
+          videoQualityModeRef.current === 'audio-only'
+      }));
+      onMediaWarning?.(
+        enabled
+          ? '2GB RAM Lite Mode ON · Screen share & thumbnails optimized for low memory.'
+          : 'Lite Mode OFF · Standard video decoding restored.'
+      );
+    },
+    [applyBitrateProfile, onMediaWarning, releaseCameraTrack]
+  );
+
+  // ── Live WebRTC pc.getStats() Network Monitor (8s Lite/Mobile, 4s Desktop) ──
   useEffect(() => {
     if (!inCall) {
       setNetworkStats(DEFAULT_NETWORK_STATS);
@@ -902,16 +1144,19 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
     }
 
     // Re-apply bitrate split whenever remote peer count changes
-    applyBitrateProfile(videoQualityModeRef.current, false).then((capKbps) => {
-      setNetworkStats((prev) => ({ ...prev, activeCapKbps: capKbps }));
+    applyBitrateProfile(videoQualityModeRef.current, false, true).then((capKbps) => {
+      setNetworkStats((prev) =>
+        prev.activeCapKbps === capKbps ? prev : { ...prev, activeCapKbps: capKbps }
+      );
     });
 
     let lastBytesSent = 0;
     let lastBytesRecv = 0;
     let lastSampleTime = Date.now();
+    const pollMs = liteMode || DEVICE_PROFILE.isMobile ? 8000 : 4000;
 
     const intervalId = setInterval(async () => {
-      if (peerConnectionsRef.current.size === 0) return;
+      if (document.hidden || peerConnectionsRef.current.size === 0) return;
 
       let highestRttMs: number | null = null;
       let totalPackets = 0;
@@ -978,23 +1223,38 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
 
       const isPoor = quality === 'poor';
       const capKbps = await applyBitrateProfile(videoQualityModeRef.current, isPoor);
+      const throttled =
+        liteModeRef.current ||
+        videoQualityModeRef.current === 'data-saver' ||
+        videoQualityModeRef.current === 'audio-only' ||
+        (videoQualityModeRef.current === 'auto' && isPoor);
 
-      setNetworkStats({
-        quality,
-        rttMs: highestRttMs,
-        packetLossPct: lossPct,
-        activeCapKbps: capKbps,
-        uploadKbps,
-        downloadKbps,
-        isThrottled:
-          videoQualityModeRef.current === 'data-saver' ||
-          videoQualityModeRef.current === 'audio-only' ||
-          (videoQualityModeRef.current === 'auto' && isPoor)
+      setNetworkStats((prev) => {
+        if (
+          prev.quality === quality &&
+          prev.rttMs === highestRttMs &&
+          prev.packetLossPct === lossPct &&
+          prev.activeCapKbps === capKbps &&
+          prev.uploadKbps === uploadKbps &&
+          prev.downloadKbps === downloadKbps &&
+          prev.isThrottled === throttled
+        ) {
+          return prev;
+        }
+        return {
+          quality,
+          rttMs: highestRttMs,
+          packetLossPct: lossPct,
+          activeCapKbps: capKbps,
+          uploadKbps,
+          downloadKbps,
+          isThrottled: throttled
+        };
       });
-    }, 4000);
+    }, pollMs);
 
     return () => clearInterval(intervalId);
-  }, [inCall, remotePeers.length, applyBitrateProfile]);
+  }, [inCall, liteMode, remotePeers.length, applyBitrateProfile]);
 
   // Ensure all media tracks and peer connections close on unmount
   useEffect(() => {
@@ -1020,6 +1280,9 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
     waitingList,
     isConnected,
     meetingStartedAt,
+    liteMode,
+    deviceMemoryGb: DEVICE_PROFILE.deviceMemoryGb,
+    isLowRamDevice: DEVICE_PROFILE.isLowRamDevice,
     videoQualityMode,
     networkStats,
     localStream: localDisplayStream,
@@ -1041,6 +1304,7 @@ export function useWebRTC({ onMediaWarning, onRoomError }: UseWebRTCOptions = {}
     sendReaction,
     sendChatMessage,
     setVideoQuality,
+    setLiteMode,
     updateRoomSettings,
     admitGuest,
     admitAllGuests,

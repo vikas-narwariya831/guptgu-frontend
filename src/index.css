@@ -2,9 +2,9 @@
 
 @layer base {
   body {
-    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background-color: #FAFBF9;
-    color: #111827;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background-color: #F7F7F5;
+    color: #14171A;
   }
 
   code, pre, .font-mono {
@@ -15,34 +15,34 @@
 @keyframes floatUp {
   0% {
     opacity: 0;
-    transform: translateY(18px) scale(0.8);
+    transform: translateY(14px) scale(0.85);
   }
   15% {
     opacity: 1;
-    transform: translateY(0) scale(1.1);
+    transform: translateY(0) scale(1.05);
   }
   100% {
     opacity: 0;
-    transform: translateY(-130px) scale(1.25);
+    transform: translateY(-110px) scale(1.1);
   }
 }
 
 .animate-float-up {
-  animation: floatUp 2.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: floatUp 2.2s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-/* Subtle architectural scrollbar */
+.gpu-contain {
+  contain: layout paint;
+}
+
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(17, 24, 39, 0.14);
+  background: rgba(156, 163, 175, 0.28);
   border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(17, 24, 39, 0.26);
 }

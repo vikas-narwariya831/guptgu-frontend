@@ -1,8 +1,9 @@
-import { memo, useEffect, useRef } from 'react';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { MicOff, MonitorUp, Hand, Pin, PinOff, Crown } from 'lucide-react';
 import { useAudioLevel } from '../../hooks/useAudioLevel';
 
 interface VideoTileProps {
+  peerId: string;
   name: string;
   stream: MediaStream | null;
   isLocal?: boolean;
@@ -12,10 +13,13 @@ interface VideoTileProps {
   isHandRaised?: boolean;
   isHost?: boolean;
   isPinned?: boolean;
-  onTogglePin?: () => void;
+  liteMode?: boolean;
+  disableVideoDecoder?: boolean;
+  onTogglePin?: (peerId: string) => void;
 }
 
 function VideoTile({
+  peerId,
   name,
   stream,
   isLocal = false,
@@ -25,92 +29,131 @@ function VideoTile({
   isHandRaised = false,
   isHost = false,
   isPinned = false,
+  liteMode = false,
+  disableVideoDecoder = false,
   onTogglePin
 }: VideoTileProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const audioLevel = useAudioLevel(stream, isMuted);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const audioLevel = useAudioLevel(stream, isMuted, !liteMode);
   const isSpeaking = !isMuted && audioLevel > 0.1;
-
-  useEffect(() => {
-    const videoEl = videoRef.current;
-    if (!videoEl) return;
-    if (videoEl.srcObject !== stream) {
-      videoEl.srcObject = stream;
-    }
-  }, [stream]);
 
   const hasLiveVideo =
     Boolean(stream && stream.getVideoTracks().some((t) => t.readyState === 'live')) &&
     (!isCameraOff || isScreenSharing);
 
-  const initials = name
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((n) => n[0]?.toUpperCase())
-    .join('') || 'G';
+  const shouldRenderVideo = hasLiveVideo && !disableVideoDecoder;
+
+  const audioTrackSignature =
+    stream
+      ?.getAudioTracks()
+      .map((t) => t.id)
+      .join(',') || '';
+
+  const audioOnlyStream = useMemo(() => {
+    if (shouldRenderVideo || isLocal || !stream) return null;
+    const tracks = stream.getAudioTracks();
+    return tracks.length > 0 ? new MediaStream(tracks) : null;
+  }, [shouldRenderVideo, isLocal, stream, audioTrackSignature]);
+
+  useEffect(() => {
+    const videoEl = videoRef.current;
+    if (!videoEl) return;
+    const nextObj = shouldRenderVideo ? stream : null;
+    if (videoEl.srcObject !== nextObj) {
+      videoEl.srcObject = nextObj;
+    }
+    return () => {
+      if (videoEl.srcObject) videoEl.srcObject = null;
+    };
+  }, [stream, shouldRenderVideo]);
+
+  useEffect(() => {
+    const audioEl = audioRef.current;
+    if (!audioEl) return;
+    if (audioEl.srcObject !== audioOnlyStream) {
+      audioEl.srcObject = audioOnlyStream;
+    }
+    return () => {
+      if (audioEl.srcObject) audioEl.srcObject = null;
+    };
+  }, [audioOnlyStream]);
+
+  const initials =
+    name
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((n) => n[0]?.toUpperCase())
+      .join('') || 'G';
+
+  const statusSubtitle =
+    disableVideoDecoder && hasLiveVideo
+      ? isLocal
+        ? 'Camera active · Lite mode'
+        : 'Audio only · Tap to view'
+      : isLocal
+      ? 'Camera off'
+      : '';
+
+  const borderClass = isScreenSharing
+    ? 'border-emerald-500/60'
+    : isSpeaking
+    ? 'border-emerald-500'
+    : isHandRaised
+    ? 'border-amber-400/70'
+    : 'border-white/[0.08]';
 
   return (
     <div
-      className={`group relative overflow-hidden rounded-[22px] border transition-colors duration-200 ${
-        hasLiveVideo
-          ? 'bg-[#111614]'
-          : 'bg-gradient-to-br from-white via-[#F9FCFA] to-[#EFF7F3]'
-      } ${
-        isScreenSharing
-          ? 'border-[#0D6E4E] ring-4 ring-[#0D6E4E]/15 shadow-lg'
-          : isSpeaking
-          ? 'border-[#0D6E4E] ring-4 ring-[#0D6E4E]/15 shadow-md'
-          : isHandRaised
-          ? 'border-amber-400 ring-4 ring-amber-400/15 shadow-md'
-          : 'border-[#E4E7E4] hover:border-[#CBE7D8] shadow-[0_1px_3px_rgba(16,24,40,0.04)]'
-      } flex items-center justify-center w-full h-full min-h-[165px] sm:min-h-[210px]`}
+      className={`gpu-contain group relative overflow-hidden rounded-xl sm:rounded-2xl border bg-[#161A22] transition-colors duration-150 ${borderClass} flex items-center justify-center w-full h-full min-h-[150px] sm:min-h-[200px]`}
     >
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        disablePictureInPicture
-        muted={isLocal}
-        className={`w-full h-full ${isScreenSharing ? 'object-contain bg-[#0A0E0C]' : 'object-cover'} ${
-          isLocal && !isScreenSharing ? '-scale-x-100' : ''
-        } ${hasLiveVideo ? 'opacity-100' : 'opacity-0 pointer-events-none absolute'}`}
-      />
-
-      {!hasLiveVideo && (
-        <div className="flex flex-col items-center justify-center gap-3 select-none">
-          <div
-            className={`w-22 h-22 rounded-full bg-white border-2 transition-all duration-200 flex items-center justify-center text-2xl font-extrabold text-[#0D6E4E] shadow-sm ${
-              isSpeaking
-                ? 'border-[#0D6E4E] ring-8 ring-[#0D6E4E]/12 scale-105'
-                : 'border-[#CBE7D8] ring-8 ring-[#0D6E4E]/[0.04]'
-            }`}
-          >
-            {initials}
+      {shouldRenderVideo ? (
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          disablePictureInPicture
+          muted={isLocal}
+          className={`w-full h-full ${isScreenSharing ? 'object-contain bg-[#0A0C10]' : 'object-cover'} ${
+            isLocal && !isScreenSharing ? '-scale-x-100' : ''
+          }`}
+        />
+      ) : (
+        <>
+          {audioOnlyStream && <audio ref={audioRef} autoPlay playsInline className="hidden" />}
+          <div className="flex flex-col items-center justify-center gap-2 select-none px-2 text-center">
+            <div
+              className={`${
+                liteMode ? 'w-14 h-14 sm:w-16 sm:h-16' : 'w-16 h-16 sm:w-20 sm:h-20'
+              } rounded-full bg-[#232936] border flex items-center justify-center text-lg sm:text-xl font-semibold text-neutral-100 ${
+                isSpeaking ? 'border-emerald-500' : 'border-white/10'
+              }`}
+            >
+              {initials}
+            </div>
+            {statusSubtitle && (
+              <span className="text-[11px] text-neutral-400 leading-tight">
+                {statusSubtitle}
+              </span>
+            )}
           </div>
-          <span className="text-xs text-[#6B7280] font-medium">
-            {isLocal ? 'Your camera is off' : 'Camera paused'}
-          </span>
-        </div>
+        </>
       )}
 
-      {hasLiveVideo && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/40 to-transparent" />
-      )}
-
-      {/* Top Badges */}
-      <div className="absolute top-3.5 left-3.5 right-3.5 flex items-center justify-between pointer-events-none">
+      {/* Top Overlay Controls */}
+      <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none">
         <div className="flex items-center gap-1.5">
           {isScreenSharing && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#0D6E4E] text-white text-[11px] font-bold shadow-md">
-              <MonitorUp size={12} />
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-600 text-white text-[11px] font-medium">
+              <MonitorUp size={11} />
               Presenting
             </span>
           )}
           {isHandRaised && (
-            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-400 text-[#111827] text-[11px] font-bold shadow-md animate-bounce">
-              <Hand size={12} />
-              Hand Raised
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-400 text-neutral-950 text-[11px] font-semibold">
+              <Hand size={11} />
+              Raised
             </span>
           )}
         </div>
@@ -118,43 +161,24 @@ function VideoTile({
         {onTogglePin && (
           <button
             type="button"
-            onClick={onTogglePin}
-            className="pointer-events-auto opacity-85 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 p-2 rounded-full bg-white/95 hover:bg-white text-[#374151] border border-[#E4E7E4] shadow-md transition-all cursor-pointer"
-            title={isPinned ? 'Unpin tile' : 'Pin to spotlight'}
+            onClick={() => onTogglePin(peerId)}
+            className="pointer-events-auto opacity-80 md:opacity-0 md:group-hover:opacity-100 focus:opacity-100 p-1.5 rounded-lg bg-black/55 hover:bg-black/75 text-neutral-200 border border-white/10 transition-opacity cursor-pointer"
+            title={isPinned ? 'Unpin' : 'Pin'}
           >
-            {isPinned ? <PinOff size={14} /> : <Pin size={14} />}
+            {isPinned ? <PinOff size={13} /> : <Pin size={13} />}
           </button>
         )}
       </div>
 
-      {/* Bottom Nameplate (no backdrop-blur over video to eliminate mobile GPU lag) */}
-      <div className="absolute bottom-3.5 left-3.5 right-3.5 flex items-center justify-between pointer-events-none">
-        <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/95 border border-[#E4E7E4] shadow-sm text-xs font-semibold text-[#111827] max-w-[85%]">
-          {isHost && <Crown size={12} className="text-[#0D6E4E] shrink-0" />}
+      {/* Bottom Name Tag */}
+      <div className="absolute bottom-2.5 left-2.5 right-2.5 flex items-center pointer-events-none">
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/65 text-xs font-medium text-white max-w-[88%]">
+          {isHost && <Crown size={11} className="text-amber-400 shrink-0" />}
           <span className="truncate">
-            {name} {isLocal ? '(You)' : ''}
+            {name}
+            {isLocal ? ' (You)' : ''}
           </span>
-
-          {isMuted ? (
-            <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-rose-100 text-rose-600 shrink-0">
-              <MicOff size={11} />
-            </span>
-          ) : isSpeaking ? (
-            <span className="flex items-end gap-0.5 h-3 shrink-0 px-0.5">
-              <span
-                className="w-0.5 rounded-full bg-[#0D6E4E] transition-all duration-75"
-                style={{ height: `${Math.max(35, Math.round(audioLevel * 100))}%` }}
-              />
-              <span
-                className="w-0.5 rounded-full bg-[#0D6E4E] transition-all duration-75"
-                style={{ height: `${Math.max(60, Math.round(audioLevel * 100))}%` }}
-              />
-              <span
-                className="w-0.5 rounded-full bg-[#0D6E4E] transition-all duration-75"
-                style={{ height: `${Math.max(35, Math.round(audioLevel * 100))}%` }}
-              />
-            </span>
-          ) : null}
+          {isMuted && <MicOff size={11} className="text-rose-400 shrink-0 ml-0.5" />}
         </div>
       </div>
     </div>

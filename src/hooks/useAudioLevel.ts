@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { DEVICE_PROFILE } from '../utils/deviceProfile';
 
 // Single shared AudioContext across all tiles (prevents hitting browser AudioContext limits & saves RAM)
 let sharedAudioCtx: AudioContext | null = null;
@@ -33,21 +34,17 @@ function releaseAudioContext() {
   }
 }
 
-const IS_MOBILE =
-  typeof navigator !== 'undefined' &&
-  /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-
 /**
  * Memory-optimized voice level monitor (0..1):
- * - Automatically disabled on mobile devices to preserve WebRTC hardware audio pipeline & FPS
+ * - Automatically disabled on mobile / low-RAM devices to preserve WebRTC hardware audio pipeline & FPS
  * - Reuses 1 shared AudioContext across all participants on desktop
  * - Samples every 120ms (~8Hz) instead of 60fps rAF
  */
-export function useAudioLevel(stream: MediaStream | null, isMuted: boolean): number {
+export function useAudioLevel(stream: MediaStream | null, isMuted: boolean, enabled = true): number {
   const [level, setLevel] = useState(0);
 
   useEffect(() => {
-    if (IS_MOBILE || !stream || isMuted) {
+    if (!enabled || DEVICE_PROFILE.isMobile || DEVICE_PROFILE.isLowRamDevice || !stream || isMuted) {
       setLevel(0);
       return;
     }
@@ -105,7 +102,7 @@ export function useAudioLevel(stream: MediaStream | null, isMuted: boolean): num
       }
       releaseAudioContext();
     };
-  }, [stream, isMuted]);
+  }, [stream, isMuted, enabled]);
 
   return level;
 }

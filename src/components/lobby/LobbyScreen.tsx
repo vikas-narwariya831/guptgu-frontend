@@ -6,13 +6,9 @@ import {
   MicOff,
   Plus,
   ArrowRight,
-  ShieldCheck,
-  MonitorUp,
   Lock,
   Loader2,
-  Keyboard,
-  ChevronDown,
-  Wifi
+  ChevronDown
 } from 'lucide-react';
 import { generateRoomCode } from '../../utils/roomUtils';
 import { useAudioLevel } from '../../hooks/useAudioLevel';
@@ -27,6 +23,7 @@ interface LobbyScreenProps {
   isMuted: boolean;
   isCameraOff: boolean;
   isConnected: boolean;
+  liteMode?: boolean;
   webSpeed: WebSpeedInfo;
   onInitMedia: (
     startMuted?: boolean,
@@ -35,6 +32,7 @@ interface LobbyScreenProps {
   ) => Promise<MediaStream | null> | void;
   onToggleMute: () => void;
   onToggleCamera: () => void;
+  onToggleLiteMode?: (enabled: boolean) => void;
   onJoinMeeting: (roomCode: string, userName: string) => void;
 }
 
@@ -46,14 +44,16 @@ export default function LobbyScreen({
   isMuted,
   isCameraOff,
   isConnected,
+  liteMode = false,
   webSpeed,
   onInitMedia,
   onToggleMute,
   onToggleCamera,
+  onToggleLiteMode,
   onJoinMeeting
 }: LobbyScreenProps) {
   const [userName, setUserName] = useState(
-    () => localStorage.getItem('guptgu_username') || 'Vikas Narwariya'
+    () => localStorage.getItem('guptgu_username') || ''
   );
   const [roomInput, setRoomInput] = useState(initialRoomCode);
   const [entryMode, setEntryMode] = useState<'create' | 'join'>(
@@ -65,7 +65,10 @@ export default function LobbyScreen({
   const [selectedVideoId, setSelectedVideoId] = useState('');
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  const audioLevel = useAudioLevel(localStream, isMuted);
+  const audioLevel = useAudioLevel(localStream, isMuted, !liteMode);
+
+  const hasVideo =
+    Boolean(localStream?.getVideoTracks().some((t) => t.readyState === 'live')) && !isCameraOff;
 
   useEffect(() => {
     const setup = async () => {
@@ -86,10 +89,16 @@ export default function LobbyScreen({
   }, [onInitMedia]);
 
   useEffect(() => {
-    if (videoRef.current && videoRef.current.srcObject !== localStream) {
-      videoRef.current.srcObject = localStream;
+    const el = videoRef.current;
+    if (!el) return;
+    const target = hasVideo ? localStream : null;
+    if (el.srcObject !== target) {
+      el.srcObject = target;
     }
-  }, [localStream]);
+    return () => {
+      if (el.srcObject) el.srcObject = null;
+    };
+  }, [localStream, hasVideo]);
 
   const handleDeviceChange = (kind: 'audio' | 'video', deviceId: string) => {
     const nextAudio = kind === 'audio' ? deviceId : selectedAudioId;
@@ -103,199 +112,145 @@ export default function LobbyScreen({
   };
 
   const handleStartNewMeeting = () => {
-    if (!userName.trim()) return;
+    const clean = userName.trim();
+    if (!clean) return;
     const code = generateRoomCode();
-    localStorage.setItem('guptgu_username', userName.trim());
+    localStorage.setItem('guptgu_username', clean);
     window.history.replaceState({}, document.title, `?room=${code}`);
-    onJoinMeeting(code, userName.trim());
+    onJoinMeeting(code, clean);
   };
 
   const handleJoinExisting = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userName.trim() || !roomInput.trim()) return;
+    const clean = userName.trim();
+    if (!clean || !roomInput.trim()) return;
     let cleanCode = roomInput.trim();
     if (cleanCode.includes('room=')) {
       const match = cleanCode.match(/room=([a-zA-Z0-9-]+)/);
       if (match?.[1]) cleanCode = match[1];
     }
-    localStorage.setItem('guptgu_username', userName.trim());
+    localStorage.setItem('guptgu_username', clean);
     window.history.replaceState({}, document.title, `?room=${cleanCode.toLowerCase()}`);
-    onJoinMeeting(cleanCode, userName.trim());
+    onJoinMeeting(cleanCode, clean);
   };
 
-  const hasVideo =
-    Boolean(localStream?.getVideoTracks().some((t) => t.readyState === 'live')) && !isCameraOff;
-
-  const initials = userName
-    .trim()
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((n) => n[0]?.toUpperCase())
-    .join('') || 'G';
+  const initials =
+    userName
+      .trim()
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((n) => n[0]?.toUpperCase())
+      .join('') || 'G';
 
   return (
-    <div className="min-h-screen w-full bg-[#FAFBF9] text-[#111827] flex flex-col justify-between relative overflow-hidden">
-      {/* Subtle Architectural Backdrop (desktop only to prevent mobile GPU blur lag) */}
-      <div
-        className="hidden md:block fixed inset-0 pointer-events-none opacity-[0.45]"
-        style={{
-          backgroundImage: 'radial-gradient(#D5DBD6 1px, transparent 1px)',
-          backgroundSize: '24px 24px'
-        }}
-      />
-      <div className="hidden md:block fixed -top-48 left-1/3 w-[560px] h-[560px] rounded-full bg-[#DCEFE5]/60 blur-[140px] pointer-events-none" />
-
-      {/* Header */}
-      <header className="relative z-10 w-full bg-white/95 md:bg-white/90 md:backdrop-blur-md border-b border-[#E6E9E6]">
-        <div className="max-w-6xl mx-auto px-4 sm:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {/* Custom Guptgu Emblem */}
-            <div className="w-9 h-9 rounded-xl bg-[#0D6E4E] flex items-center justify-center text-white shadow-sm shadow-[#0D6E4E]/25">
-              <Video size={18} />
+    <div className="min-h-dvh w-full bg-[#F7F7F5] text-[#14171A] flex flex-col justify-between">
+      {/* Top Bar */}
+      <header className="w-full border-b border-[#E5E6E1] bg-[#F7F7F5]">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-lg bg-[#14171A] flex items-center justify-center text-white">
+              <Video size={15} />
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-[19px] font-extrabold tracking-[-0.03em] text-[#111827]">
-                Guptgu
-              </span>
-              <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-[#EDF7F2] text-[#0D6E4E] border border-[#CBE7D8]">
-                <Lock size={9} /> Private P2P
-              </span>
-            </div>
+            <span className="text-[16px] font-bold tracking-[-0.02em] text-[#14171A]">
+              guptgu
+            </span>
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Live Web Speed Badge */}
+          <div className="flex items-center gap-3 text-xs text-[#5B6066]">
             <button
               type="button"
               onClick={webSpeed.refresh}
-              title="Click to refresh internet speed"
-              className={`inline-flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-semibold px-2.5 sm:px-3 py-1.5 rounded-full border transition-colors cursor-pointer ${
-                webSpeed.label === 'Slow'
-                  ? 'bg-rose-50 text-rose-700 border-rose-200'
-                  : webSpeed.label === 'Moderate'
-                  ? 'bg-amber-50 text-amber-700 border-amber-200'
-                  : 'bg-[#EDF7F2] text-[#0D6E4E] border-[#CBE7D8]'
-              }`}
+              className="font-mono text-[11px] hover:text-[#14171A] transition-colors cursor-pointer"
+              title="Refresh connection info"
             >
-              <Wifi size={12} />
-              <span className="font-mono">
-                {webSpeed.downlinkMbps !== null ? `↓ ${webSpeed.downlinkMbps} Mbps` : webSpeed.effectiveType}
-              </span>
-              {webSpeed.pingMs !== null && (
-                <span className="text-[11px] opacity-80">· {webSpeed.pingMs}ms</span>
-              )}
+              {webSpeed.pingMs !== null ? `${webSpeed.pingMs}ms` : webSpeed.effectiveType}
             </button>
-
-            <div className="flex items-center gap-2 text-xs font-semibold text-[#4B5563] bg-white border border-[#E6E9E6] px-3.5 py-1.5 rounded-full shadow-[0_1px_2px_rgba(16,24,40,0.04)]">
+            <span className="text-[#D4D6D0]">·</span>
+            <span className="inline-flex items-center gap-1.5 font-medium">
               <span
-                className={`w-2 h-2 rounded-full ${
-                  isConnected ? 'bg-[#0D6E4E] animate-pulse' : 'bg-amber-500'
+                className={`w-1.5 h-1.5 rounded-full ${
+                  isConnected ? 'bg-emerald-600' : 'bg-amber-500'
                 }`}
               />
-              <span className="hidden md:inline">
-                {isConnected ? 'Encrypted Signaling Ready' : 'Connecting...'}
-              </span>
-              <span className="md:hidden">{isConnected ? 'Ready' : 'Connecting...'}</span>
-            </div>
+              {isConnected ? 'Online' : 'Connecting'}
+            </span>
           </div>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="relative z-10 max-w-6xl w-full mx-auto px-3.5 sm:px-8 py-4 sm:py-8 lg:py-12 grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 lg:gap-12 items-center">
-        {/* Left: Framed Studio Preview */}
+      {/* Main Two-Column Setup */}
+      <main className="max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-10 grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-10 items-center">
+        {/* Left: Clean Video Preview */}
         <div className="lg:col-span-7 flex flex-col gap-3 min-w-0">
-          <div className="p-1.5 sm:p-2.5 bg-white rounded-2xl sm:rounded-[26px] border border-[#E4E7E4] shadow-[0_1px_3px_rgba(16,24,40,0.04),0_20px_40px_-12px_rgba(16,24,40,0.08)]">
-            <div className="relative aspect-[16/10] sm:aspect-video w-full rounded-xl sm:rounded-[18px] overflow-hidden bg-[#111614] flex items-center justify-center">
+          <div className="relative aspect-[16/10] sm:aspect-video w-full rounded-2xl overflow-hidden bg-[#13161B] border border-[#242932] flex items-center justify-center">
+            {hasVideo ? (
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
                 muted
-                className={`w-full h-full object-cover -scale-x-100 ${
-                  hasVideo ? 'opacity-100' : 'opacity-0 absolute'
-                }`}
+                className="w-full h-full object-cover -scale-x-100"
               />
-
-              {!hasVideo && (
-                <div className="flex flex-col items-center gap-3 text-center px-4">
-                  <div className="w-22 h-22 rounded-full bg-[#0D6E4E]/20 border border-[#34D399]/35 ring-8 ring-[#0D6E4E]/10 flex items-center justify-center text-2xl font-extrabold text-[#A7F3D0]">
-                    {initials}
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className="text-sm font-semibold text-white">Camera is turned off</p>
-                    <p className="text-xs text-slate-400">
-                      {isMuted ? 'Microphone is muted' : 'Microphone is active'} · Studio ready
-                    </p>
-                  </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2.5 text-center px-4">
+                <div className="w-18 h-18 rounded-full bg-[#222731] border border-white/10 flex items-center justify-center text-xl font-semibold text-neutral-200">
+                  {initials}
                 </div>
+                <p className="text-xs text-neutral-400">
+                  {isCameraOff ? 'Camera is off' : 'Camera unavailable'}
+                </p>
+              </div>
+            )}
+
+            {/* Subtle Name & Mic Indicator */}
+            <div className="absolute bottom-3.5 left-3.5 flex items-center gap-2 px-2.5 py-1 rounded-lg bg-black/60 text-[11px] font-medium text-white">
+              {!isMuted && audioLevel > 0.1 && (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
               )}
+              <span>{userName.trim() || 'Guest'}</span>
+            </div>
 
-              {/* Live Mic Meter Pill */}
-              <div className="absolute top-3.5 left-3.5 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/75 border border-white/10 text-[11px] font-medium text-white">
-                {!isMuted ? (
-                  <span className="flex items-end gap-0.5 h-3">
-                    <span
-                      className="w-0.5 rounded-full bg-[#34D399] transition-all duration-75"
-                      style={{ height: `${Math.max(25, Math.round(audioLevel * 100))}%` }}
-                    />
-                    <span
-                      className="w-0.5 rounded-full bg-[#34D399] transition-all duration-75"
-                      style={{ height: `${Math.max(40, Math.round(audioLevel * 100))}%` }}
-                    />
-                    <span
-                      className="w-0.5 rounded-full bg-[#34D399] transition-all duration-75"
-                      style={{ height: `${Math.max(25, Math.round(audioLevel * 100))}%` }}
-                    />
-                  </span>
-                ) : (
-                  <MicOff size={11} className="text-rose-400" />
-                )}
-                <span>{userName.trim() || 'Guest'}</span>
-              </div>
+            {/* Bottom-Center Circular Media Controls */}
+            <div className="absolute bottom-3.5 left-1/2 -translate-x-1/2 flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={onToggleMute}
+                aria-label={isMuted ? 'Turn microphone on' : 'Turn microphone off'}
+                className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                  isMuted
+                    ? 'bg-rose-600 text-white hover:bg-rose-700'
+                    : 'bg-[#212630]/90 text-white hover:bg-[#2C3340] border border-white/15'
+                }`}
+              >
+                {isMuted ? <MicOff size={17} /> : <Mic size={17} />}
+              </button>
 
-              {/* Preview Controls Pill */}
-              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white/95 p-1.5 rounded-2xl border border-[#E4E7E4] shadow-xl">
-                <button
-                  type="button"
-                  onClick={onToggleMute}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    isMuted
-                      ? 'bg-rose-600 text-white hover:bg-rose-700'
-                      : 'bg-[#F3F5F3] text-[#1F2937] hover:bg-[#EDF7F2] hover:text-[#0D6E4E]'
-                  }`}
-                >
-                  {isMuted ? <MicOff size={15} /> : <Mic size={15} />}
-                  <span className="hidden sm:inline">{isMuted ? 'Muted' : 'Mic On'}</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={onToggleCamera}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                    isCameraOff
-                      ? 'bg-rose-600 text-white hover:bg-rose-700'
-                      : 'bg-[#F3F5F3] text-[#1F2937] hover:bg-[#EDF7F2] hover:text-[#0D6E4E]'
-                  }`}
-                >
-                  {isCameraOff ? <VideoOff size={15} /> : <Video size={15} />}
-                  <span className="hidden sm:inline">{isCameraOff ? 'Cam Off' : 'Cam On'}</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={onToggleCamera}
+                aria-label={isCameraOff ? 'Turn camera on' : 'Turn camera off'}
+                className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors cursor-pointer ${
+                  isCameraOff
+                    ? 'bg-rose-600 text-white hover:bg-rose-700'
+                    : 'bg-[#212630]/90 text-white hover:bg-[#2C3340] border border-white/15'
+                }`}
+              >
+                {isCameraOff ? <VideoOff size={17} /> : <Video size={17} />}
+              </button>
             </div>
           </div>
 
-          {/* Device Pickers */}
+          {/* Device Pickers (only shown when devices exist) */}
           {(audioDevices.length > 0 || videoDevices.length > 0) && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 px-0.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {audioDevices.length > 0 && (
                 <div className="relative flex items-center">
-                  <Mic size={13} className="absolute left-3 text-[#0D6E4E] pointer-events-none" />
+                  <Mic size={13} className="absolute left-3 text-[#5B6066] pointer-events-none" />
                   <select
                     value={selectedAudioId}
                     onChange={(e) => handleDeviceChange('audio', e.target.value)}
-                    className="w-full appearance-none pl-8 pr-8 py-2.5 rounded-xl bg-white border border-[#E4E7E4] text-xs font-medium text-[#374151] outline-none focus:border-[#0D6E4E] shadow-[0_1px_2px_rgba(16,24,40,0.03)] truncate cursor-pointer"
+                    className="w-full appearance-none pl-8 pr-7 py-2 rounded-lg bg-white border border-[#E2E3DF] text-xs font-medium text-[#2C3034] outline-none focus:border-[#14171A] truncate cursor-pointer"
                   >
                     {audioDevices.map((d, i) => (
                       <option key={d.deviceId || i} value={d.deviceId}>
@@ -303,17 +258,17 @@ export default function LobbyScreen({
                       </option>
                     ))}
                   </select>
-                  <ChevronDown size={13} className="absolute right-2.5 text-[#6B7280] pointer-events-none" />
+                  <ChevronDown size={13} className="absolute right-2.5 text-[#7C8288] pointer-events-none" />
                 </div>
               )}
 
               {videoDevices.length > 0 && (
                 <div className="relative flex items-center">
-                  <Video size={13} className="absolute left-3 text-[#0D6E4E] pointer-events-none" />
+                  <Video size={13} className="absolute left-3 text-[#5B6066] pointer-events-none" />
                   <select
                     value={selectedVideoId}
                     onChange={(e) => handleDeviceChange('video', e.target.value)}
-                    className="w-full appearance-none pl-8 pr-8 py-2.5 rounded-xl bg-white border border-[#E4E7E4] text-xs font-medium text-[#374151] outline-none focus:border-[#0D6E4E] shadow-[0_1px_2px_rgba(16,24,40,0.03)] truncate cursor-pointer"
+                    className="w-full appearance-none pl-8 pr-7 py-2 rounded-lg bg-white border border-[#E2E3DF] text-xs font-medium text-[#2C3034] outline-none focus:border-[#14171A] truncate cursor-pointer"
                   >
                     {videoDevices.map((d, i) => (
                       <option key={d.deviceId || i} value={d.deviceId}>
@@ -321,123 +276,110 @@ export default function LobbyScreen({
                       </option>
                     ))}
                   </select>
-                  <ChevronDown size={13} className="absolute right-2.5 text-[#6B7280] pointer-events-none" />
+                  <ChevronDown size={13} className="absolute right-2.5 text-[#7C8288] pointer-events-none" />
                 </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Right: Executive Meeting Card */}
-        <div className="lg:col-span-5 flex flex-col gap-4 sm:gap-5 min-w-0">
-          <div className="space-y-2 sm:space-y-3">
-            <h1 className="text-2xl sm:text-3xl lg:text-[40px] font-extrabold tracking-[-0.03em] text-[#111827] leading-[1.12]">
-              Private conversations,{' '}
-              <span className="text-[#0D6E4E]">without the clutter.</span>
+        {/* Right: Clean Entry Form */}
+        <div className="lg:col-span-5 flex flex-col gap-5 min-w-0">
+          <div className="space-y-1.5">
+            <h1 className="text-2xl sm:text-[28px] font-bold tracking-[-0.025em] text-[#14171A] leading-tight">
+              Start or join a call
             </h1>
-            <p className="text-xs sm:text-[14px] text-[#4B5563] leading-relaxed">
-              Guptgu delivers direct peer-to-peer video, crisp screen sharing, and low-bandwidth resilience — no sign-up, no tracking.
+            <p className="text-sm text-[#5B6066]">
+              Peer-to-peer video and screen sharing in your browser.
             </p>
           </div>
 
-          <div className="bg-white border border-[#E4E7E4] rounded-2xl sm:rounded-3xl p-4 sm:p-6 space-y-4 sm:space-y-5 shadow-[0_1px_3px_rgba(16,24,40,0.04),0_20px_40px_-14px_rgba(16,24,40,0.07)]">
+          <div className="bg-white border border-[#E2E3DF] rounded-2xl p-5 space-y-4">
             {lobbyStatus === 'waiting' ? (
-              <div className="py-8 flex flex-col items-center text-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-[#EDF7F2] border border-[#CBE7D8] flex items-center justify-center text-[#0D6E4E]">
-                  <Loader2 size={28} className="animate-spin" />
-                </div>
+              <div className="py-6 flex flex-col items-center text-center gap-3">
+                <Loader2 size={24} className="animate-spin text-[#14171A]" />
                 <div className="space-y-1">
-                  <h2 className="text-lg font-bold text-[#111827]">Asking to be let in...</h2>
-                  <p className="text-xs text-[#6B7280] max-w-xs leading-relaxed">
-                    {lobbyMessage || 'Waiting for the meeting host to admit you into the room.'}
+                  <h2 className="text-base font-semibold text-[#14171A]">Asking to join...</h2>
+                  <p className="text-xs text-[#5B6066] max-w-xs leading-relaxed">
+                    {lobbyMessage || 'Waiting for the host to let you in.'}
                   </p>
                 </div>
               </div>
             ) : (
               <>
                 {lobbyStatus === 'rejected' && (
-                  <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs font-medium text-rose-700">
-                    <Lock size={15} className="text-rose-600 shrink-0 mt-0.5" />
-                    <span>{lobbyMessage || 'You cannot join this meeting.'}</span>
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2 text-xs font-medium text-rose-700">
+                    <Lock size={14} className="text-rose-600 shrink-0 mt-0.5" />
+                    <span>{lobbyMessage || 'Unable to join this room.'}</span>
                   </div>
                 )}
 
                 {!initialRoomCode && (
-                  <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-[#F3F5F3]">
+                  <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-[#F1F2EE]">
                     <button
                       type="button"
                       onClick={() => setEntryMode('create')}
-                      className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      className={`py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
                         entryMode === 'create'
-                          ? 'bg-white text-[#0D6E4E] shadow-[0_1px_2px_rgba(16,24,40,0.06)]'
-                          : 'text-[#6B7280] hover:text-[#111827]'
+                          ? 'bg-white text-[#14171A] shadow-2xs'
+                          : 'text-[#5B6066] hover:text-[#14171A]'
                       }`}
                     >
-                      New Meeting
+                      New room
                     </button>
                     <button
                       type="button"
                       onClick={() => setEntryMode('join')}
-                      className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                      className={`py-1.5 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
                         entryMode === 'join'
-                          ? 'bg-white text-[#0D6E4E] shadow-[0_1px_2px_rgba(16,24,40,0.06)]'
-                          : 'text-[#6B7280] hover:text-[#111827]'
+                          ? 'bg-white text-[#14171A] shadow-2xs'
+                          : 'text-[#5B6066] hover:text-[#14171A]'
                       }`}
                     >
-                      Join with Code
+                      Join with code
                     </button>
                   </div>
                 )}
 
                 <div className="space-y-1.5">
-                  <label className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider">
-                    Display Name
-                  </label>
+                  <label className="text-xs font-medium text-[#4A4F54]">Your name</label>
                   <input
                     type="text"
                     value={userName}
                     onChange={(e) => setUserName(e.target.value)}
                     placeholder="Enter your name"
                     maxLength={32}
-                    className="w-full px-4 py-3 rounded-xl bg-[#FAFBF9] border border-[#E4E7E4] focus:bg-white focus:border-[#0D6E4E] focus:ring-3 focus:ring-[#0D6E4E]/10 text-sm font-medium text-[#111827] placeholder-[#9CA3AF] outline-none transition-all"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAFAF8] border border-[#E2E3DF] focus:bg-white focus:border-[#14171A] text-sm text-[#14171A] placeholder-[#9CA3AF] outline-none transition-colors"
                   />
                 </div>
 
                 {initialRoomCode || entryMode === 'join' ? (
-                  <form onSubmit={handleJoinExisting} className="space-y-3.5">
+                  <form onSubmit={handleJoinExisting} className="space-y-3">
                     {initialRoomCode ? (
-                      <div className="p-3 rounded-xl bg-[#EDF7F2] border border-[#CBE7D8] text-xs text-[#0B4F38] flex items-center justify-between">
-                        <span className="font-semibold">Meeting Code</span>
-                        <span className="font-mono font-bold tracking-wide">{roomInput}</span>
+                      <div className="px-3.5 py-2.5 rounded-xl bg-[#F4F5F2] border border-[#E2E3DF] text-xs flex items-center justify-between">
+                        <span className="text-[#5B6066] font-medium">Room</span>
+                        <span className="font-mono font-semibold text-[#14171A]">{roomInput}</span>
                       </div>
                     ) : (
                       <div className="space-y-1.5">
-                        <label className="text-[11px] font-bold text-[#6B7280] uppercase tracking-wider">
-                          Meeting Code or Link
-                        </label>
-                        <div className="relative">
-                          <Keyboard
-                            size={15}
-                            className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#9CA3AF] pointer-events-none"
-                          />
-                          <input
-                            type="text"
-                            value={roomInput}
-                            onChange={(e) => setRoomInput(e.target.value)}
-                            placeholder="kqz-mnpw-xvt or invite URL"
-                            className="w-full pl-9 pr-3 py-3 rounded-xl bg-[#FAFBF9] border border-[#E4E7E4] focus:bg-white focus:border-[#0D6E4E] focus:ring-3 focus:ring-[#0D6E4E]/10 text-sm text-[#111827] placeholder-[#9CA3AF] outline-none font-mono transition-all"
-                          />
-                        </div>
+                        <label className="text-xs font-medium text-[#4A4F54]">Room code or link</label>
+                        <input
+                          type="text"
+                          value={roomInput}
+                          onChange={(e) => setRoomInput(e.target.value)}
+                          placeholder="e.g. abc-defg-hij"
+                          className="w-full px-3.5 py-2.5 rounded-xl bg-[#FAFAF8] border border-[#E2E3DF] focus:bg-white focus:border-[#14171A] text-sm text-[#14171A] placeholder-[#9CA3AF] outline-none font-mono transition-colors"
+                        />
                       </div>
                     )}
 
                     <button
                       type="submit"
                       disabled={!roomInput.trim() || !userName.trim() || !isConnected}
-                      className="w-full py-3.5 rounded-xl bg-[#0D6E4E] hover:bg-[#0A573D] disabled:opacity-45 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shadow-[#0D6E4E]/20"
+                      className="w-full py-2.5 rounded-xl bg-[#14171A] hover:bg-[#272C33] disabled:opacity-40 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
                     >
-                      <span>{initialRoomCode ? 'Ask / Join Guptgu' : 'Join Meeting'}</span>
-                      <ArrowRight size={16} />
+                      <span>Join call</span>
+                      <ArrowRight size={15} />
                     </button>
                   </form>
                 ) : (
@@ -445,29 +387,39 @@ export default function LobbyScreen({
                     type="button"
                     onClick={handleStartNewMeeting}
                     disabled={!userName.trim() || !isConnected}
-                    className="w-full py-3.5 rounded-xl bg-[#0D6E4E] hover:bg-[#0A573D] disabled:opacity-45 text-white font-bold text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shadow-[#0D6E4E]/20 hover:-translate-y-0.5 active:translate-y-0"
+                    className="w-full py-2.5 rounded-xl bg-[#14171A] hover:bg-[#272C33] disabled:opacity-40 text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer"
                   >
-                    <Plus size={18} />
-                    <span>Start Instant Guptgu</span>
+                    <Plus size={16} />
+                    <span>New call</span>
                   </button>
+                )}
+
+                {onToggleLiteMode && (
+                  <div className="pt-2 border-t border-[#ECECE8] flex items-center justify-between text-xs">
+                    <span className="text-[#5B6066]">
+                      Low-RAM mode {liteMode ? '(on)' : '(off)'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => onToggleLiteMode(!liteMode)}
+                      className={`px-2.5 py-1 rounded-md font-medium cursor-pointer transition-colors ${
+                        liteMode
+                          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                          : 'bg-[#F1F2EE] text-[#4A4F54] hover:text-[#14171A]'
+                      }`}
+                    >
+                      {liteMode ? 'Enabled' : 'Enable'}
+                    </button>
+                  </div>
                 )}
               </>
             )}
           </div>
-
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-[#6B7280] font-medium px-1">
-            <span className="inline-flex items-center gap-1.5">
-              <ShieldCheck size={14} className="text-[#0D6E4E]" /> Host Controls &amp; Waiting Room
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <MonitorUp size={14} className="text-[#0D6E4E]" /> Adaptive Low-Net Mode
-            </span>
-          </div>
         </div>
       </main>
 
-      <footer className="relative z-10 max-w-6xl w-full mx-auto px-4 py-4 text-center text-xs text-[#9CA3AF]">
-        Guptgu · Private Peer-to-Peer Meetings · Zero Data Stored
+      <footer className="max-w-5xl w-full mx-auto px-4 py-4 text-center text-[11px] text-[#8B9196]">
+        guptgu · peer-to-peer calls, nothing stored
       </footer>
     </div>
   );
